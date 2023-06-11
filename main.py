@@ -1,15 +1,19 @@
 import time
+import os
 import numpy as np
 import pandas as pd
 import tkinter as tk
 from tkinter import filedialog
 from sklearn.preprocessing import MinMaxScaler
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 from tensorflow.keras.callbacks import EarlyStopping, TensorBoard, ProgbarLogger, Callback
 from joblib import Parallel, delayed
 import mplfinance as mpf
+
+print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
 gpus = tf.config.list_physical_devices('GPU')
 if gpus:
@@ -122,9 +126,8 @@ def train_model(model, train_X, train_Y, epochs=10, batch_size=32):
     early_stopping = EarlyStopping(monitor='val_loss', patience=5)
     time_callback = TimeHistory()
     tensorboard_callback = TensorBoard(log_dir='./logs', histogram_freq=1)
-    progbar_callback = ProgbarLogger(count_mode='samples', stateful_metrics=None)
     model.fit(train_X, train_Y, epochs=epochs, batch_size=batch_size, validation_split=0.2,
-              callbacks=[early_stopping, time_callback, tensorboard_callback, progbar_callback])
+              callbacks=[early_stopping, time_callback, tensorboard_callback])
     return model, time_callback.times
 
 
