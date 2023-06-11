@@ -4,11 +4,24 @@ import pandas as pd
 import tkinter as tk
 from tkinter import filedialog
 from sklearn.preprocessing import MinMaxScaler
+import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 from tensorflow.keras.callbacks import EarlyStopping, TensorBoard, ProgbarLogger, Callback
 from joblib import Parallel, delayed
 import mplfinance as mpf
+
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+  try:
+    tf.config.set_visible_devices(gpus[0], 'GPU')  # use GPU 0
+    tf.config.experimental.set_virtual_device_configuration(
+        gpus[0],
+        [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=15*1024)])  # limit to 15 GB
+    logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+    print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+  except RuntimeError as e:
+    print(e)
 
 class TimeHistory(Callback):
     def on_train_begin(self, logs={}):
