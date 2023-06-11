@@ -1,6 +1,7 @@
 import time
 import os
 import numpy as np
+import re
 import pandas as pd
 import tkinter as tk
 from tkinter import filedialog
@@ -10,7 +11,6 @@ import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 from tensorflow.keras.callbacks import EarlyStopping, TensorBoard, ProgbarLogger, Callback
-from joblib import Parallel, delayed
 import mplfinance as mpf
 
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
@@ -141,7 +141,44 @@ def cross_validation_process(i, X, Y, lookback):
     model, times = train_model(model, train_X, train_Y)
     train_loss = model.evaluate(train_X, train_Y, verbose=0)
     test_loss = model.evaluate(test_X, test_Y, verbose=0)
-    return train_loss, test_loss
+    return train_loss, test_loss, model  # Return model as well
+
+
+def save_model(model):
+    # Save the LSTM model
+    root = tk.Tk()
+    root.withdraw()
+
+    while True:
+        # Opens a file dialog for user to choose the path and filename.
+        file_path = filedialog.asksaveasfilename(defaultextension=".h5",
+                                                 filetypes=(("H5 files", "*.h5"), ("All files", "*.*")))
+
+        if not file_path:
+            raise ValueError("No location selected.")
+
+        model_name = os.path.basename(file_path)
+        model_name_no_ext = os.path.splitext(model_name)[0]
+
+        if not re.match("^[a-z0-9_]+$", model_name_no_ext):
+            print("Invalid model name. Use only lower case letters, digits, and underscores.")
+            continue
+        break  # if filename is valid, break the loop
+
+    # save the model to the selected directory
+    model.save(file_path)
+    print(f"Model saved at location : {file_path}")
+
+def ask_user_to_save_model():
+    # Ask the user whether they want to save the model
+    while True:
+        user_input = input("Do you want to save the model? (yes/no): ")
+        if user_input.lower() == "yes":
+            return True
+        elif user_input.lower() == "no":
+            return False
+        else:
+            print("Invalid input. Please enter 'yes' or 'no'.")
 
 
 def main():
@@ -151,13 +188,15 @@ def main():
         scaler, X, Y = load_and_preprocess_data(file_path, lookback)
         train_losses = []
         test_losses = []
+        models = []  # Keep track of all models
 
         # Perform Leave-One-Out Cross-Validation
         num_samples = X.shape[0]
-        results = Parallel(n_jobs=-1)(
-            delayed(cross_validation_process)(i, X, Y, lookback) for i in range(num_samples)
-        )
-        train_losses, test_losses = zip(*results)
+        for i in range(num_samples):
+            train_loss, test_loss, model = cross_validation_process(i, X, Y, lookback)
+            train_losses.append(train_loss)
+            test_losses.append(test_loss)
+            models.append(model)  # Store the model
 
         # Calculate average losses
         avg_train_loss = np.mean(train_losses)
@@ -166,9 +205,10 @@ def main():
         print("Average Train Loss:", avg_train_loss)
         print("Average Test Loss:", avg_test_loss)
 
+        if ask_user_to_save_model():  # If the user wants to save the model
+            # We save the last model as an example, but you might want to choose
+            # which model to save in a different way depending on your use case
+            save_model(models[-1])  # Save the last model
+
     except Exception as e:
         print("An error occurred:", str(e))
-
-
-if __name__ == '__main__':
-    main()
