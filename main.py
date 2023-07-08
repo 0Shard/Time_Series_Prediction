@@ -13,6 +13,7 @@ from tensorflow.keras.callbacks import EarlyStopping, TensorBoard, ProgbarLogger
 from tensorflow.keras.layers import BatchNormalization
 from tensorflow.keras.optimizers.schedules import ExponentialDecay
 from tensorflow.keras.regularizers import l2
+from tensorflow.keras.callbacks import ModelCheckpoint
 import mplfinance as mpf
 
 
@@ -144,8 +145,21 @@ def build_model(lookback, l2_factor=0.0085):
     return model
 
 
-def train_model(train_X, train_Y, lookback):
+def train_model(train_X, train_Y, lookback, checkpoint_file):
     model = build_model(lookback)
+
+    # Load weights from checkpoint file if it is provided
+    if checkpoint_file is not None and os.path.isfile(checkpoint_file):
+        print(f"Loading weights from {checkpoint_file}...")
+        model.load_weights(checkpoint_file)
+
+        # Add ModelCheckpoint callback
+    checkpoint_callback = ModelCheckpoint(
+        filepath='PATH_TO_CHECKPOINT/checkpoint_{epoch:02d}.hdf5',
+        monitor='val_loss',
+        save_best_only=True,
+        save_weights_only=True,
+        verbose=1)
 
     lr_schedule = ExponentialDecay(
         initial_learning_rate=1e-2,
@@ -160,13 +174,12 @@ def train_model(train_X, train_Y, lookback):
         restore_best_weights=True)
 
     time_callback = TimeHistory()
-    model.fit(train_X, train_Y, epochs=50, batch_size=128, validation_split=0.2, verbose=1, callbacks=[time_callback, early_stopping])
+    model.fit(train_X, train_Y, epochs=50, batch_size=128, validation_split=0.2, verbose=1, callbacks=[time_callback, early_stopping, checkpoint_callback])
     train_loss = model.evaluate(train_X, train_Y, verbose=1)
     return train_loss, model, time_callback.times
 
 
-def cross_validation_process(X, Y, lookback):
-    # Perform Leave-One-Out Cross-Validation
+def cross_validation_process(X, Y, lookback, checkpoint_file=None):
     train_losses = []
     models = []
     training_times = []
@@ -174,12 +187,18 @@ def cross_validation_process(X, Y, lookback):
     print("Starting cross-validation process...")
     for i in range(X.shape[0]):
         print(f"Training model {i+1} of {X.shape[0]}...")
+
+        # Save checkpoints every 10 iterations
+        if i % 10 == 0:
+            checkpoint_file = f'PATH_TO_CHECKPOINT/checkpoint_{i:03d}.hdf5'
+
         train_X = np.delete(X, i, axis=0)
         train_Y = np.delete(Y, i, axis=0)
-        train_loss, model, training_time = train_model(train_X, train_Y, lookback)
+        train_loss, model, training_time = train_model(train_X, train_Y, lookback, checkpoint_file)
         train_losses.append(train_loss)
         models.append(model)
         training_times.append(training_time)
+
         print(f"Finished training model {i+1}. Train loss: {train_loss}, Training time: {sum(training_time)} seconds.")
 
     print("Cross-validation process completed.")
@@ -225,7 +244,8 @@ def main():
     filename = select_csv_file()
     print("Loading and preprocessing data...")
     scaler, X, Y = load_and_preprocess_data(filename, lookback)
-    train_losses, models, training_times = cross_validation_process(X, Y, lookback)
+    CHECKPOINT_FILE = None # You can provide a path to a checkpoint file here. If you don't have one and want to start training from scratch, set it to None.
+    train_losses, models, training_times = cross_validation_process(X, Y, lookback, CHECKPOINT_FILE)
     best_model_index = np.argmin(train_losses)
     best_model = models[best_model_index]
     print(f"Best model selected with a training loss of {train_losses[best_model_index]}.")
