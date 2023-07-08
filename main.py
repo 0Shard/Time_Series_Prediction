@@ -179,30 +179,48 @@ def train_model(train_X, train_Y, lookback, checkpoint_file):
     return train_loss, model, time_callback.times
 
 
-def cross_validation_process(X, Y, lookback, checkpoint_file=None):
+def time_series_cross_validation_process(X, Y, lookback, checkpoint_file=None):
     train_losses = []
+    validation_losses = []  # Added this line
     models = []
     training_times = []
 
-    print("Starting cross-validation process...")
-    for i in range(X.shape[0]):
-        print(f"Training model {i+1} of {X.shape[0]}...")
+    print("Starting time series cross-validation process...")
+    # Change this to the number of iterations you want for the cross-validation
+    for i in range(10, X.shape[0], 10):
+        print(f"Training model {i + 1} of {X.shape[0]}...")
         checkpoint_file = f'PATH_TO_CHECKPOINT/model_{i:03d}.hdf5'
-        train_X = np.delete(X, i, axis=0)
-        train_Y = np.delete(Y, i, axis=0)
+
+        # Splitting data into training and validation sets
+        train_X = X[:i]
+        train_Y = Y[:i]
+        val_X = X[i:i + 10]
+        val_Y = Y[i:i + 10]
+
         train_loss, model, training_time = train_model(train_X, train_Y, lookback, checkpoint_file)
+        val_loss = model.evaluate(val_X, val_Y, verbose=1)  # Calculate validation loss
+
         train_losses.append(train_loss)
+        validation_losses.append(val_loss)  # Store validation loss
         models.append(model)
         training_times.append(training_time)
 
-        # Save the validation loss for this model
-        with open(f'PATH_TO_CHECKPOINT/loss_{i:03d}.json', 'w') as f:
-            json.dump({'loss': train_loss}, f)
+        print(
+            f"Finished training model {i + 1}. Train loss: {train_loss}, Validation loss: {val_loss}, Training time: {sum(training_time)} seconds.")
 
-        print(f"Finished training model {i+1}. Train loss: {train_loss}, Training time: {sum(training_time)} seconds.")
+    print("Time series cross-validation process completed.")
+    return train_losses, validation_losses, models, training_times
 
-    print("Cross-validation process completed.")
-    return train_losses, models, training_times
+def ask_user_to_train_new_model():
+    # Ask the user whether they want to train a new model or use a pre-trained one
+    while True:
+        user_input = input("Do you want to train a new model? (yes/no): ")
+        if user_input.lower() == "yes":
+            return True
+        elif user_input.lower() == "no":
+            return False
+        else:
+            print("Invalid input. Please enter 'yes' or 'no'.")
 
 def save_model(model):
     # Ask user where to save the LSTM model
@@ -245,18 +263,24 @@ def main():
     print("Loading and preprocessing data...")
     scaler, X, Y = load_and_preprocess_data(filename, lookback)
 
-    # Load the model with the smallest validation loss
-    losses = []
-    for i in range(X.shape[0]):
-        with open(f'PATH_TO_CHECKPOINT/loss_{i:03d}.json', 'r') as f:
-            losses.append(json.load(f)['loss'])
-    min_loss_index = np.argmin(losses)
-    CHECKPOINT_FILE = f'PATH_TO_CHECKPOINT/model_{min_loss_index:03d}.hdf5'
+    if ask_user_to_train_new_model():
+        # Training a new model
+        train_losses, models, training_times = time_series_cross_validation_process(X, Y, lookback)
+        best_model_index = np.argmin(train_losses)
+        best_model = models[best_model_index]
+        print(f"Best model selected with a training loss of {train_losses[best_model_index]}.")
+    else:
+        # Using a pre-trained model
+        # Load the model with the smallest validation loss
+        losses = []
+        for i in range(X.shape[0]):
+            with open(f'PATH_TO_CHECKPOINT/loss_{i:03d}.json', 'r') as f:
+                losses.append(json.load(f)['loss'])
+        min_loss_index = np.argmin(losses)
+        CHECKPOINT_FILE = f'PATH_TO_CHECKPOINT/model_{min_loss_index:03d}.hdf5'
+        best_model = tf.keras.models.load_model(CHECKPOINT_FILE)
+        print(f"Pre-trained model loaded with a training loss of {losses[min_loss_index]}.")
 
-    train_losses, models, training_times = cross_validation_process(X, Y, lookback, CHECKPOINT_FILE)
-    best_model_index = np.argmin(train_losses)
-    best_model = models[best_model_index]
-    print(f"Best model selected with a training loss of {train_losses[best_model_index]}.")
     if ask_user_to_save_model():
         save_model(best_model)
     print("Finished the script.")
