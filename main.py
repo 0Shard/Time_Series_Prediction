@@ -1,31 +1,45 @@
 import time
 import os
 import numpy as np
+import subprocess
 import re
 import pandas as pd
-import tkinter as tk
-from tkinter import filedialog
 from sklearn.preprocessing import MinMaxScaler
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 from tensorflow.keras.callbacks import EarlyStopping, TensorBoard, ProgbarLogger, Callback
+from tensorflow.keras.layers import BatchNormalization
+from tensorflow.keras.optimizers.schedules import ExponentialDecay
+from tensorflow.keras.regularizers import l2
 import mplfinance as mpf
 
-print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
-gpus = tf.config.list_physical_devices('GPU')
-if gpus:
-  try:
-    tf.config.set_visible_devices(gpus[0], 'GPU')  # use GPU 0
-    tf.config.experimental.set_virtual_device_configuration(
-        gpus[0],
-        [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=15*1024)])  # limit to 15 GB
-    logical_gpus = tf.config.experimental.list_logical_devices('GPU')
-    print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
-  except RuntimeError as e:
-    print(e)
+def select_gpu_with_most_memory():
+
+    print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+
+    # get the memory usage information
+    output = subprocess.check_output("nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits", shell=True)
+
+    # parse the output to get the memory for each GPU
+    memories = [int(x) for x in output.decode('utf-8').strip().split('\n')]
+
+    # get the GPU with the most memory
+    gpu_most_memory = np.argmax(memories)
+
+    # now set TensorFlow to use this GPU
+    gpus = tf.config.list_physical_devices('GPU')
+    if gpus:
+        try:
+            # use the GPU with the most memory
+            tf.config.set_visible_devices(gpus[gpu_most_memory], 'GPU')
+            tf.config.experimental.set_virtual_device_configuration(gpus[gpu_most_memory], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=15*1024)])
+            logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+            print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+        except RuntimeError as e:
+            print(e)
 
 class TimeHistory(Callback):
     def on_train_begin(self, logs={}):
@@ -65,14 +79,11 @@ def remove_characters_and_convert_to_integer(value):
     return integer_value
 
 def select_csv_file():
-    # Open file dialog to select a CSV file
-    root = tk.Tk()
-    root.withdraw()
-    file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
-    if not file_path:
-        raise ValueError("No file selected.")
+    # Ask user to enter a CSV file path
+    file_path = input("Please enter the path to the CSV file: ")
+    if not os.path.isfile(file_path):
+        raise ValueError("No such file found.")
     return file_path
-
 
 def load_and_preprocess_data(filename, lookback):
     # Load and preprocess data from a CSV file
@@ -110,49 +121,75 @@ def load_and_preprocess_data(filename, lookback):
     Y = np.array(Y)
     return scaler, X, Y
 
-def build_model(lookback):
+def build_model(lookback, l2_factor=0.0085):
     # Build LSTM model
     model = Sequential()
-    model.add(LSTM(50, return_sequences=True, input_shape=(lookback, 5)))
+    model.add(LSTM(64, return_sequences=True, kernel_regularizer=l2(l2_factor), input_shape=(lookback, 5)))
+    model.add(BatchNormalization())
     model.add(Dropout(0.2))
-    model.add(LSTM(50))
+    model.add(LSTM(64, return_sequences=True, kernel_regularizer=l2(l2_factor)))
+    model.add(BatchNormalization())
+    model.add(Dropout(0.2))
+    model.add(LSTM(64, return_sequences=True, kernel_regularizer=l2(l2_factor)))
+    model.add(BatchNormalization())
+    model.add(Dropout(0.2))
+    model.add(LSTM(64, return_sequences=True, kernel_regularizer=l2(l2_factor)))
+    model.add(BatchNormalization())
+    model.add(Dropout(0.2))
+    model.add(LSTM(64, kernel_regularizer=l2(l2_factor)))
+    model.add(BatchNormalization())
     model.add(Dropout(0.2))
     model.add(Dense(7))
     model.compile(loss='mean_squared_error', optimizer='adam')
     return model
 
-def train_model(model, train_X, train_Y, epochs=10, batch_size=32):
-    # Train the LSTM model
-    early_stopping = EarlyStopping(monitor='val_loss', patience=5)
-    time_callback = TimeHistory()
-    tensorboard_callback = TensorBoard(log_dir='./logs', histogram_freq=1)
-    model.fit(train_X, train_Y, epochs=epochs, batch_size=batch_size, validation_split=0.2,
-              callbacks=[early_stopping, time_callback, tensorboard_callback])
-    return model, time_callback.times
 
-
-def cross_validation_process(i, X, Y, lookback):
-    # Perform cross-validation process for a given index
-    train_X = np.delete(X, i, axis=0)
-    train_Y = np.delete(Y, i, axis=0)
-    test_X = X[i:i + 1]
-    test_Y = Y[i:i + 1]
+def train_model(train_X, train_Y, lookback):
     model = build_model(lookback)
-    model, times = train_model(model, train_X, train_Y)
-    train_loss = model.evaluate(train_X, train_Y, verbose=0)
-    test_loss = model.evaluate(test_X, test_Y, verbose=0)
-    return train_loss, test_loss, model  # Return model as well
 
+    lr_schedule = ExponentialDecay(
+        initial_learning_rate=1e-2,
+        decay_steps=10000,
+        decay_rate=0.9)
+
+    model.compile(loss='mean_squared_error', optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule))
+
+    early_stopping = EarlyStopping(
+        monitor='val_loss',
+        patience=15,
+        restore_best_weights=True)
+
+    time_callback = TimeHistory()
+    model.fit(train_X, train_Y, epochs=50, batch_size=128, validation_split=0.2, verbose=1, callbacks=[time_callback, early_stopping])
+    train_loss = model.evaluate(train_X, train_Y, verbose=1)
+    return train_loss, model, time_callback.times
+
+
+def cross_validation_process(X, Y, lookback):
+    # Perform Leave-One-Out Cross-Validation
+    train_losses = []
+    models = []
+    training_times = []
+
+    print("Starting cross-validation process...")
+    for i in range(X.shape[0]):
+        print(f"Training model {i+1} of {X.shape[0]}...")
+        train_X = np.delete(X, i, axis=0)
+        train_Y = np.delete(Y, i, axis=0)
+        train_loss, model, training_time = train_model(train_X, train_Y, lookback)
+        train_losses.append(train_loss)
+        models.append(model)
+        training_times.append(training_time)
+        print(f"Finished training model {i+1}. Train loss: {train_loss}, Training time: {sum(training_time)} seconds.")
+
+    print("Cross-validation process completed.")
+    return train_losses, models, training_times
 
 def save_model(model):
-    # Save the LSTM model
-    root = tk.Tk()
-    root.withdraw()
-
+    # Ask user where to save the LSTM model
     while True:
-        # Opens a file dialog for user to choose the path and filename.
-        file_path = filedialog.asksaveasfilename(defaultextension=".h5",
-                                                 filetypes=(("H5 files", "*.h5"), ("All files", "*.*")))
+        # Ask user to enter a path and filename.
+        file_path = input("Please enter the path to save the model (with .h5 extension): ")
 
         if not file_path:
             raise ValueError("No location selected.")
@@ -162,12 +199,12 @@ def save_model(model):
 
         if not re.match("^[a-z0-9_]+$", model_name_no_ext):
             print("Invalid model name. Use only lower case letters, digits, and underscores.")
-            continue
-        break  # if filename is valid, break the loop
+            continue  # if filename is invalid, ask again
 
-    # save the model to the selected directory
-    model.save(file_path)
-    print(f"Model saved at location : {file_path}")
+        # save the model to the entered path
+        model.save(file_path)
+        print(f"Model saved at location : {file_path}")
+        break  # if filename is valid, break the loop
 
 def ask_user_to_save_model():
     # Ask the user whether they want to save the model
@@ -180,35 +217,21 @@ def ask_user_to_save_model():
         else:
             print("Invalid input. Please enter 'yes' or 'no'.")
 
-
 def main():
-    try:
-        file_path = select_csv_file()
-        lookback = 14
-        scaler, X, Y = load_and_preprocess_data(file_path, lookback)
-        train_losses = []
-        test_losses = []
-        models = []  # Keep track of all models
+    print("Starting the script...")
+    select_gpu_with_most_memory()
+    # Run the script
+    lookback = 14  # use past 14 days data to predict next 7 days
+    filename = select_csv_file()
+    print("Loading and preprocessing data...")
+    scaler, X, Y = load_and_preprocess_data(filename, lookback)
+    train_losses, models, training_times = cross_validation_process(X, Y, lookback)
+    best_model_index = np.argmin(train_losses)
+    best_model = models[best_model_index]
+    print(f"Best model selected with a training loss of {train_losses[best_model_index]}.")
+    if ask_user_to_save_model():
+        save_model(best_model)
+    print("Finished the script.")
 
-        # Perform Leave-One-Out Cross-Validation
-        num_samples = X.shape[0]
-        for i in range(num_samples):
-            train_loss, test_loss, model = cross_validation_process(i, X, Y, lookback)
-            train_losses.append(train_loss)
-            test_losses.append(test_loss)
-            models.append(model)  # Store the model
-
-        # Calculate average losses
-        avg_train_loss = np.mean(train_losses)
-        avg_test_loss = np.mean(test_losses)
-
-        print("Average Train Loss:", avg_train_loss)
-        print("Average Test Loss:", avg_test_loss)
-
-        if ask_user_to_save_model():  # If the user wants to save the model
-            # We save the last model as an example, but you might want to choose
-            # which model to save in a different way depending on your use case
-            save_model(models[-1])  # Save the last model
-
-    except Exception as e:
-        print("An error occurred:", str(e))
+if __name__ == "__main__":
+    main()
