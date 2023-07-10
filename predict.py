@@ -5,10 +5,59 @@ import tensorflow as tf
 import mplfinance as mpf
 
 def remove_characters_and_convert_to_integer(value):
-    # ... Same as above ...
+    if pd.isnull(value):
+        return None
+
+    if isinstance(value, str):
+        characters_to_remove = [",", "-", ".", "/"]
+        for character in characters_to_remove:
+            value = value.replace(character, "")
+
+        try:
+            integer_value = int(value)
+        except ValueError:
+            raise ValueError("Invalid string value. Cannot convert to integer.")
+
+    elif isinstance(value, float):
+        integer_value = int(value)
+
+    else:
+        raise ValueError("Invalid value type. Must be a string or float.")
+
+    return integer_value
 
 def load_and_preprocess_data(filename, lookback):
-    # ... Same as above ...
+    data = pd.read_csv(filename)
+    data = data.iloc[:, [0, 1, 6]]
+    data.columns = ['Date', 'Close', 'Volume']
+    data['Date'] = pd.to_datetime(data['Date'], format='%d-%m-%y')
+    data.sort_values(by='Date', ascending=True, inplace=True)
+    data.reset_index(drop=True, inplace=True)
+    data['Day'] = data['Date'].dt.day
+    data['Month'] = data['Date'].dt.month
+    data['Year'] = data['Date'].dt.year
+    data['Close'] = data['Close'].apply(remove_characters_and_convert_to_integer)
+    data['Volume'] = data['Volume'].apply(remove_characters_and_convert_to_integer)
+    data['Historical Close'] = data['Close'].shift(1)
+    data.dropna(inplace=True)
+    data['Historical Close'] = data['Historical Close'].shift(lookback)
+    data.drop(data.head(lookback).index, inplace=True)
+
+    data.dropna(inplace=True)
+
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    data[['Close', 'Volume']] = scaler.fit_transform(data[['Close', 'Volume']])
+    X, Y = [], []
+    for i in range(len(data) - lookback - 7):
+        X.append(np.column_stack((data['Day'].values[i:(i + lookback)],
+                                  data['Month'].values[i:(i + lookback)],
+                                  data['Year'].values[i:(i + lookback)],
+                                  data['Volume'].values[i:(i + lookback)],
+                                  data['Historical Close'].values[i:(i + lookback)])))
+        Y.append(data['Close'].values[(i + lookback):(i + lookback + 7)])
+    X = np.array(X)
+    Y = np.array(Y)
+    return scaler, X, Y
 
 def load_model(path_to_model):
     model = tf.keras.models.load_model(path_to_model)
