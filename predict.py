@@ -1,93 +1,46 @@
-import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
-from tensorflow.keras.models import load_model
+import numpy as np
+import tensorflow as tf
 import mplfinance as mpf
-import tkinter as tk
-from tkinter import filedialog
 
-def remove_characters_and_convert_to_integer(string):
-    # Remove specific characters from the string
-    characters_to_remove = [",", "-", ".", "/"]
-    for character in characters_to_remove:
-        string = string.replace(character, "")
+def remove_characters_and_convert_to_integer(value):
+    # ... Same as above ...
 
-    # Convert the string to an integer
-    integer_value = int(string)
+def load_and_preprocess_data(filename, lookback):
+    # ... Same as above ...
 
-    return integer_value
+def load_model(path_to_model):
+    model = tf.keras.models.load_model(path_to_model)
+    return model
 
-def select_csv_file():
-    root = tk.Tk()
-    root.withdraw()
-
-    # Open file manager dialog
-    file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
-
-    return file_path
-
-def load_data(filename):
-    # Load the stock market data
-    data = pd.read_csv(filename)
-    return data
-
-def preprocess_data(data, lookback):
-    # Preprocess the data
-    scaler = MinMaxScaler(feature_range=(0, 1))
-    data['Close'] = data['Close'].apply(remove_characters_and_convert_to_integer)
-    scaled_data = scaler.fit_transform(data[['Close']])
-
-    # Prepare the data for LSTM
-    X = []
-    for i in range(len(scaled_data) - lookback):
-        X.append(scaled_data[i:(i + lookback), :])
-    X = np.array(X)
-
-    # Reshape the input data for LSTM [samples, time steps, features]
-    X = np.reshape(X, (X.shape[0], X.shape[1], X.shape[2]))
-
-    return scaler, X
-
-def predict(model, data, scaler, lookback):
-    # Make predictions
-    input_data = scaler.transform(data[-lookback:].values.reshape(-1, 1))
-    input_data = input_data.reshape(1, lookback, 1)
-    predictions = model.predict(input_data)
-    predictions = scaler.inverse_transform(predictions)
+def make_prediction(model, X, lookback):
+    predictions = model.predict(X[-1].reshape(1, lookback, 5))
     return predictions
 
+def plot_predictions(data, predictions):
+    for i in range(7):
+        data = data.append({'Date': data['Date'].iloc[-1] + pd.DateOffset(days=1), 'Close': predictions[0][i]}, ignore_index=True)
+    mpf.plot(data.set_index('Date')[-100:], type='line', title='Stock Prices', ylabel='Price', volume=True, style='yahoo')
+
 def main():
-    # Select model file
-    model_path = filedialog.askopenfilename(filetypes=[("Model Files", "*.h5")])
-
-    # Load the model
-    model = load_model(model_path)
-
-    # Select dataset file
-    dataset_path = select_csv_file()
-
-    # Load data
-    data = load_data(dataset_path)
-
-    # Preprocess data
+    # Use the function to load and preprocess data
+    filename = "History_Closes_For_AI.csv"  # Adjust this if your CSV file is located elsewhere
     lookback = 14
-    scaler, X = preprocess_data(data, lookback)
+    scaler, X, Y = load_and_preprocess_data(filename, lookback)
 
-    # Predict the closing prices for the next week
-    predictions = predict(model, data['Close'].values, scaler, lookback)
+    # Load the trained model
+    # path_to_model = "model.h5"  # Adjust this if your model is located elsewhere
+    # model = load_model(path_to_model)
 
-    # Plot the last two weeks as blue and the predicted prices as red
-    last_two_weeks = data.tail(14 + lookback)
-    predicted_prices = pd.Series(predictions.flatten(), index=last_two_weeks.index[-7:])
+    # Predict the next 7 days
+    # predictions = make_prediction(model, X, lookback)
 
-    # Convert the DataFrame to a format compatible with mplfinance
-    last_two_weeks['Date'] = pd.to_datetime(last_two_weeks['Date'])
-    last_two_weeks = last_two_weeks.set_index('Date')
+    # Scale predictions back to original scale
+    # predictions = scaler.inverse_transform(predictions)
 
-    # Plot the stock chart
-    mpf.plot(last_two_weeks, type='candle', volume=True, title='Last Two Weeks vs. Predicted Prices',
-             ylabel='Price', ylabel_lower='Volume', style='yahoo', show_nontrading=True,
-             addplot=[mpf.make_addplot(predicted_prices, color='red')])
+    # Plotting
+    # plot_predictions(data, predictions)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
