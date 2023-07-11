@@ -5,6 +5,7 @@ import numpy as np
 import subprocess
 import re
 import pandas as pd
+import glob
 from sklearn.preprocessing import MinMaxScaler
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 import tensorflow as tf
@@ -17,6 +18,8 @@ from tensorflow.keras.regularizers import l2
 from tensorflow.keras.callbacks import ModelCheckpoint
 import mplfinance as mpf
 
+
+CHECKPOINT_DIR = "PATH_TO_CHECKPOINT"
 
 def select_gpu_with_most_memory():
 
@@ -146,20 +149,49 @@ def build_model(lookback, l2_factor=0.0085):
     return model
 
 
-def train_model(train_X, train_Y, lookback, checkpoint_file):
-    if checkpoint_file is not None and os.path.isfile(checkpoint_file):
+def ask_user_to_start_from_checkpoint():
+    # Ask the user whether they want to start from a checkpoint
+    while True:
+        user_input = input("Do you want to start from a checkpoint? (yes/no): ")
+        if user_input.lower() == "yes":
+            return True
+        elif user_input.lower() == "no":
+            return False
+        else:
+            print("Invalid input. Please enter 'yes' or 'no'.")
+
+def ask_user_for_checkpoint_dir():
+    # Ask the user to enter the path of the checkpoint directory
+    while True:
+        checkpoint_dir = input("Please enter the path of the checkpoint directory: ")
+        if os.path.isdir(checkpoint_dir):
+            return checkpoint_dir
+        else:
+            print("Invalid directory path. Please enter a valid path.")
+
+
+def get_latest_checkpoint_file(checkpoint_dir):
+    list_of_files = glob.glob(os.path.join(checkpoint_dir, '*.hdf5')) # * means all if need specific format then *.csv
+    latest_file = max(list_of_files, key=os.path.getctime)
+    return latest_file
+
+
+def train_model(train_X, train_Y, lookback, checkpoint_dir):
+    if checkpoint_dir:
+        checkpoint_file = get_latest_checkpoint_file(checkpoint_dir)
         print(f"Loading model from {checkpoint_file}...")
         model = tf.keras.models.load_model(checkpoint_file)
     else:
+        print("User chose not to use checkpoints. Building a new model...")
         model = build_model(lookback)
 
-        # Add ModelCheckpoint callback
-        checkpoint_callback = ModelCheckpoint(
-            filepath='PATH_TO_CHECKPOINT/model_{epoch:02d}.hdf5',
-            monitor='val_loss',
-            save_best_only=True,
-            save_weights_only=False,  # Save the entire model
-            verbose=1)
+    # Add ModelCheckpoint callback
+    checkpoint_callback = ModelCheckpoint(
+        filepath=os.path.join(checkpoint_dir, 'model_{epoch:02d}.hdf5'),
+        monitor='val_loss',
+        save_best_only=True,
+        save_weights_only=False,  # Save the entire model
+        verbose=1)
 
     lr_schedule = ExponentialDecay(
         initial_learning_rate=1e-2,
@@ -179,7 +211,7 @@ def train_model(train_X, train_Y, lookback, checkpoint_file):
     return train_loss, model, time_callback.times
 
 
-def time_series_cross_validation_process(X, Y, lookback, checkpoint_file=None):
+def time_series_cross_validation_process(X, Y, lookback, checkpoint_dir):
     train_losses = []
     validation_losses = []  # Added this line
     models = []
@@ -189,7 +221,6 @@ def time_series_cross_validation_process(X, Y, lookback, checkpoint_file=None):
     # Change this to the number of iterations you want for the cross-validation
     for i in range(10, X.shape[0], 10):
         print(f"Training model {i + 1} of {X.shape[0]}...")
-        checkpoint_file = f'PATH_TO_CHECKPOINT/model_{i:03d}.hdf5'
 
         # Splitting data into training and validation sets
         train_X = X[:i]
@@ -197,7 +228,7 @@ def time_series_cross_validation_process(X, Y, lookback, checkpoint_file=None):
         val_X = X[i:i + 10]
         val_Y = Y[i:i + 10]
 
-        train_loss, model, training_time = train_model(train_X, train_Y, lookback, checkpoint_file)
+        train_loss, model, training_time = train_model(train_X, train_Y, lookback, checkpoint_dir)
         val_loss = model.evaluate(val_X, val_Y, verbose=1)  # Calculate validation loss
 
         train_losses.append(train_loss)
@@ -263,9 +294,13 @@ def main():
     print("Loading and preprocessing data...")
     scaler, X, Y = load_and_preprocess_data(filename, lookback)
 
+    checkpoint_dir = None
+    if ask_user_to_start_from_checkpoint():
+        checkpoint_dir = ask_user_for_checkpoint_dir()
+
     if ask_user_to_train_new_model():
         # Training a new model
-        train_losses, models, training_times = time_series_cross_validation_process(X, Y, lookback)
+        train_losses, validation_losses, models, training_times = time_series_cross_validation_process(X, Y, lookback, checkpoint_dir)
         best_model_index = np.argmin(train_losses)
         best_model = models[best_model_index]
         print(f"Best model selected with a training loss of {train_losses[best_model_index]}.")
@@ -274,10 +309,10 @@ def main():
         # Load the model with the smallest validation loss
         losses = []
         for i in range(X.shape[0]):
-            with open(f'PATH_TO_CHECKPOINT/loss_{i:03d}.json', 'r') as f:
+            with open(os.path.join(checkpoint_dir, f'loss_{i:03d}.json'), 'r') as f:
                 losses.append(json.load(f)['loss'])
         min_loss_index = np.argmin(losses)
-        CHECKPOINT_FILE = f'PATH_TO_CHECKPOINT/model_{min_loss_index:03d}.hdf5'
+        CHECKPOINT_FILE = os.path.join(checkpoint_dir, f'model_{min_loss_index:03d}.hdf5')
         best_model = tf.keras.models.load_model(CHECKPOINT_FILE)
         print(f"Pre-trained model loaded with a training loss of {losses[min_loss_index]}.")
 
