@@ -263,3 +263,6 @@ def main():
     if ask_user_to_save_model():
         save_model(best_model)
     print("Finished the script.")
+
+if __name__ == "__main__":
+    main()
