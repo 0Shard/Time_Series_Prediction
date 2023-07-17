@@ -165,25 +165,28 @@ def train_model(train_X, train_Y, lookback):
     return train_loss, model, time_callback.times
 
 
-def cross_validation_process(X, Y, lookback):
-    # Perform Leave-One-Out Cross-Validation
+
+def rolling_window_validation_process(X, Y, lookback, window_size):
     train_losses = []
     models = []
     training_times = []
+    test_X, test_Y = None, None
 
-    print("Starting cross-validation process...")
-    for i in range(X.shape[0]):
-        print(f"Training model {i+1} of {X.shape[0]}...")
-        train_X = np.delete(X, i, axis=0)
-        train_Y = np.delete(Y, i, axis=0)
+    print("Starting rolling window validation process...")
+    for i in range(lookback, X.shape[0] - window_size):
+        print(f"Training model {i+1} of {X.shape[0] - window_size}...")
+        train_X = X[:i]
+        train_Y = Y[:i]
+        test_X = X[i:i+window_size]
+        test_Y = Y[i:i+window_size]
         train_loss, model, training_time = train_model(train_X, train_Y, lookback)
         train_losses.append(train_loss)
         models.append(model)
         training_times.append(training_time)
         print(f"Finished training model {i+1}. Train loss: {train_loss}, Training time: {sum(training_time)} seconds.")
 
-    print("Cross-validation process completed.")
-    return train_losses, models, training_times
+    print("Rolling window validation process completed.")
+    return train_losses, models, training_times, test_X, test_Y
 
 def save_model(model):
     # Ask user where to save the LSTM model
@@ -225,7 +228,7 @@ def main():
     filename = select_csv_file()
     print("Loading and preprocessing data...")
     scaler, X, Y = load_and_preprocess_data(filename, lookback)
-    train_losses, models, training_times = cross_validation_process(X, Y, lookback)
+    train_losses, models, training_times, test_X, test_Y = rolling_window_validation_process(X, Y, lookback, 7)
     best_model_index = np.argmin(train_losses)
     best_model = models[best_model_index]
     print(f"Best model selected with a training loss of {train_losses[best_model_index]}.")
