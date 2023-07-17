@@ -185,13 +185,17 @@ def train_model(train_X, train_Y, lookback, checkpoint_dir):
         print("User chose not to use checkpoints. Building a new model...")
         model = build_model(lookback)
 
-    # Add ModelCheckpoint callback
-    checkpoint_callback = ModelCheckpoint(
-        filepath=os.path.join(checkpoint_dir, 'model_{epoch:02d}.hdf5'),
-        monitor='val_loss',
-        save_best_only=True,
-        save_weights_only=False,  # Save the entire model
-        verbose=1)
+    callbacks = [time_callback, early_stopping]
+
+    # Add ModelCheckpoint callback if checkpoint_dir is not None
+    if checkpoint_dir:
+        checkpoint_callback = ModelCheckpoint(
+            filepath=os.path.join(checkpoint_dir, 'model_{epoch:02d}.hdf5'),
+            monitor='val_loss',
+            save_best_only=True,
+            save_weights_only=False,  # Save the entire model
+            verbose=1)
+        callbacks.append(checkpoint_callback)
 
     lr_schedule = ExponentialDecay(
         initial_learning_rate=1e-2,
@@ -206,7 +210,7 @@ def train_model(train_X, train_Y, lookback, checkpoint_dir):
         restore_best_weights=True)
 
     time_callback = TimeHistory()
-    model.fit(train_X, train_Y, epochs=50, batch_size=128, validation_split=0.2, verbose=1, callbacks=[time_callback, early_stopping, checkpoint_callback])
+    model.fit(train_X, train_Y, epochs=50, batch_size=128, validation_split=0.2, verbose=1, callbacks=callbacks)
     train_loss = model.evaluate(train_X, train_Y, verbose=1)
     return train_loss, model, time_callback.times
 
