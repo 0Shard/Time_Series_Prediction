@@ -144,7 +144,7 @@ def build_model(lookback, l2_factor=0.0085):
 
 
 
-def train_model(train_X, train_Y, lookback):
+def train_model(train_X, train_Y, lookback, checkpoint_dir, validation_run_number):
     model = build_model(lookback)
 
     lr_schedule = ExponentialDecay(
@@ -160,13 +160,19 @@ def train_model(train_X, train_Y, lookback):
         restore_best_weights=True)
 
     time_callback = TimeHistory()
-    model.fit(train_X, train_Y, epochs=50, batch_size=128, validation_split=0.2, verbose=1, callbacks=[time_callback, early_stopping])
+
+    # Add a ModelCheckpoint callback
+    model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
+        filepath=os.path.join(checkpoint_dir, f"{validation_run_number}.h5"),  # Save models with the name as the validation run number
+        save_best_only=False,  # Save all models, not just the one with the best validation loss
+        verbose=1)  # Log the saving of models
+
+    model.fit(train_X, train_Y, epochs=50, batch_size=128, validation_split=0.2, verbose=1, callbacks=[time_callback, early_stopping, model_checkpoint])
     train_loss = model.evaluate(train_X, train_Y, verbose=1)
     return train_loss, model, time_callback.times
 
 
-
-def rolling_window_validation_process(X, Y, lookback, window_size):
+def rolling_window_validation_process(X, Y, lookback, window_size, checkpoint_dir):
     train_losses = []
     models = []
     training_times = []
@@ -174,16 +180,21 @@ def rolling_window_validation_process(X, Y, lookback, window_size):
 
     print("Starting rolling window validation process...")
     for i in range(lookback, X.shape[0] - window_size):
-        print(f"Training model {i+1} of {X.shape[0] - window_size}...")
+        print(f"Training model {i + 1} of {X.shape[0] - window_size}...")
         train_X = X[:i]
         train_Y = Y[:i]
-        test_X = X[i:i+window_size]
-        test_Y = Y[i:i+window_size]
-        train_loss, model, training_time = train_model(train_X, train_Y, lookback)
+        test_X = X[i:i + window_size]
+        test_Y = Y[i:i + window_size]
+
+        # Calculate the validation run number
+        validation_run_number = (i - lookback) // window_size + 1
+        train_loss, model, training_time = train_model(train_X, train_Y, lookback, checkpoint_dir,
+                                                       validation_run_number)
         train_losses.append(train_loss)
         models.append(model)
         training_times.append(training_time)
-        print(f"Finished training model {i+1}. Train loss: {train_loss}, Training time: {sum(training_time)} seconds.")
+        print(
+            f"Finished training model {i + 1}. Train loss: {train_loss}, Training time: {sum(training_time)} seconds.")
 
     print("Rolling window validation process completed.")
     return train_losses, models, training_times, test_X, test_Y
@@ -220,6 +231,7 @@ def ask_user_to_save_model():
         else:
             print("Invalid input. Please enter 'yes' or 'no'.")
 
+
 def main():
     print("Starting the script...")
     select_gpu_with_most_memory()
@@ -228,13 +240,15 @@ def main():
     filename = select_csv_file()
     print("Loading and preprocessing data...")
     scaler, X, Y = load_and_preprocess_data(filename, lookback)
-    train_losses, models, training_times, test_X, test_Y = rolling_window_validation_process(X, Y, lookback, 7)
+
+    # Get the checkpoint directory from the user
+    checkpoint_dir = input("Please enter the directory to save the checkpoints: ")
+
+    train_losses, models, training_times, test_X, test_Y = rolling_window_validation_process(X, Y, lookback, 7,
+                                                                                             checkpoint_dir)
     best_model_index = np.argmin(train_losses)
     best_model = models[best_model_index]
     print(f"Best model selected with a training loss of {train_losses[best_model_index]}.")
     if ask_user_to_save_model():
         save_model(best_model)
     print("Finished the script.")
-
-if __name__ == "__main__":
-    main()
