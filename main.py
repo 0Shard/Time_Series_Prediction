@@ -1,22 +1,45 @@
+import time
 import os
-import re
-import subprocess
 import numpy as np
+import subprocess
+import re
 import pandas as pd
+from sklearn.preprocessing import MinMaxScaler
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 import tensorflow as tf
-from glob import glob
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout, BatchNormalization
+from tensorflow.keras.layers import LSTM, Dense, Dropout
+from tensorflow.keras.callbacks import EarlyStopping, TensorBoard, ProgbarLogger, Callback
+from tensorflow.keras.layers import BatchNormalization
 from tensorflow.keras.optimizers.schedules import ExponentialDecay
 from tensorflow.keras.regularizers import l2
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, Callback
-from sklearn.preprocessing import MinMaxScaler
 import mplfinance as mpf
 
-CHECKPOINT_DIR = "PATH_TO_CHECKPOINT"
 
-os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+def select_gpu_with_most_memory():
 
+    print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+
+    # get the memory usage information
+    output = subprocess.check_output("nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits", shell=True)
+
+    # parse the output to get the memory for each GPU
+    memories = [int(x) for x in output.decode('utf-8').strip().split('\n')]
+
+    # get the GPU with the most memory
+    gpu_most_memory = np.argmax(memories)
+
+    # now set TensorFlow to use this GPU
+    gpus = tf.config.list_physical_devices('GPU')
+    if gpus:
+        try:
+            # use the GPU with the most memory
+            tf.config.set_visible_devices(gpus[gpu_most_memory], 'GPU')
+            tf.config.experimental.set_virtual_device_configuration(gpus[gpu_most_memory], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=15*1024)])
+            logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+            print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+        except RuntimeError as e:
+            print(e)
 
 class TimeHistory(Callback):
     def on_train_begin(self, logs={}):
@@ -28,53 +51,39 @@ class TimeHistory(Callback):
     def on_epoch_end(self, batch, logs={}):
         self.times.append(time.time() - self.epoch_time_start)
 
-
-def select_gpu_with_most_memory():
-    gpus = tf.config.list_physical_devices('GPU')
-    print(f"Num GPUs Available: {len(gpus)}")
-
-    if not gpus:
-        return
-
-    output = subprocess.check_output("nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits", shell=True)
-    memories = [int(x) for x in output.decode('utf-8').strip().split('\n')]
-    gpu_most_memory = np.argmax(memories)
-
-    try:
-        tf.config.set_visible_devices(gpus[gpu_most_memory], 'GPU')
-        tf.config.experimental.set_virtual_device_configuration(gpus[gpu_most_memory],
-                                                                [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=15*1024)])
-        logical_gpus = tf.config.experimental.list_logical_devices('GPU')
-        print(f"{len(gpus)} Physical GPUs, {len(logical_gpus)} Logical GPUs")
-    except RuntimeError as e:
-        print(e)
-
-
 def plot_stock_chart(data):
+    # Plot stock chart using mplfinance library
     mpf.plot(data, type='candle', volume=True, title='Stock Market Prices', ylabel='Price', ylabel_lower='Volume',
              show_nontrading=True, style='yahoo')
-
 
 def remove_characters_and_convert_to_integer(value):
     if pd.isnull(value):
         return None
 
-    if isinstance(value, (str, float)):
-        value = re.sub(r"[,.-/]", "", str(value))
+    if isinstance(value, str):
+        characters_to_remove = [",", "-", ".", "/"]
+        for character in characters_to_remove:
+            value = value.replace(character, "")
+
         try:
-            return int(value)
+            integer_value = int(value)
         except ValueError:
             raise ValueError("Invalid string value. Cannot convert to integer.")
 
-    raise ValueError("Invalid value type. Must be a string or float.")
+    elif isinstance(value, float):
+        integer_value = int(value)
 
+    else:
+        raise ValueError("Invalid value type. Must be a string or float.")
+
+    return integer_value
 
 def select_csv_file():
+    # Ask user to enter a CSV file path
     file_path = input("Please enter the path to the CSV file: ")
     if not os.path.isfile(file_path):
         raise ValueError("No such file found.")
     return file_path
-
 
 def load_and_preprocess_data(filename, lookback):
     data = pd.read_csv(filename)
@@ -134,35 +143,9 @@ def build_model(lookback, l2_factor=0.0085):
     return model
 
 
-def get_user_input(prompt, valid_values):
-    while True:
-        user_input = input(prompt).lower()
-        if user_input in valid_values:
-            return user_input
-        print(f"Invalid input. Please enter one of {valid_values}.")
 
-
-def get_existing_directory(prompt):
-    while True:
-        dir_path = input(prompt)
-        if os.path.isdir(dir_path):
-            return dir_path
-        print("Invalid directory path. Please enter a valid path.")
-
-
-def get_latest_checkpoint_file(checkpoint_dir):
-    list_of_files = glob(os.path.join(checkpoint_dir, '*.hdf5'))
-    return max(list_of_files, key=os.path.getctime)
-
-
-def train_model(train_X, train_Y, val_X, val_Y, lookback, checkpoint_dir):
-    if checkpoint_dir:
-        checkpoint_file = get_latest_checkpoint_file(checkpoint_dir)
-        print(f"Loading model from {checkpoint_file}...")
-        model = tf.keras.models.load_model(checkpoint_file)
-    else:
-        print("User chose not to use checkpoints. Building a new model...")
-        model = build_model(lookback)
+def train_model(train_X, train_Y, lookback):
+    model = build_model(lookback)
 
     lr_schedule = ExponentialDecay(
         initial_learning_rate=1e-2,
@@ -177,80 +160,78 @@ def train_model(train_X, train_Y, val_X, val_Y, lookback, checkpoint_dir):
         restore_best_weights=True)
 
     time_callback = TimeHistory()
-
-    callbacks = [time_callback, early_stopping]
-
-    if checkpoint_dir:
-        checkpoint_callback = ModelCheckpoint(
-            filepath=os.path.join(checkpoint_dir, 'model_{epoch:02d}.hdf5'),
-            monitor='val_loss',
-            save_best_only=True,
-            save_weights_only=False,  # Save the entire model
-            verbose=1)
-        callbacks.append(checkpoint_callback)
-
-    model.fit(train_X, train_Y, epochs=50, batch_size=128, validation_data=(val_X, val_Y), verbose=1, callbacks=callbacks)
+    model.fit(train_X, train_Y, epochs=50, batch_size=128, validation_split=0.2, verbose=1, callbacks=[time_callback, early_stopping])
     train_loss = model.evaluate(train_X, train_Y, verbose=1)
     return train_loss, model, time_callback.times
 
 
-def time_series_cross_validation_process(X, Y, lookback, checkpoint_dir):
+def cross_validation_process(X, Y, lookback):
+    # Perform Leave-One-Out Cross-Validation
     train_losses = []
-    validation_losses = []
     models = []
     training_times = []
 
-    print("Starting time series cross-validation process...")
-    for i in range(45, X.shape[0], 45):
-        print(f"Training model {i + 1} of {X.shape[0]}...")
-
-        train_X = X[:i]
-        train_Y = Y[:i]
-        val_X = X[i:i + 45]
-        val_Y = Y[i:i + 45]
-
-        train_loss, model, training_time = train_model(train_X, train_Y, val_X, val_Y, lookback, checkpoint_dir)
-        val_loss = model.evaluate(val_X, val_Y, verbose=1)  # Calculate validation loss
-
+    print("Starting cross-validation process...")
+    for i in range(X.shape[0]):
+        print(f"Training model {i+1} of {X.shape[0]}...")
+        train_X = np.delete(X, i, axis=0)
+        train_Y = np.delete(Y, i, axis=0)
+        train_loss, model, training_time = train_model(train_X, train_Y, lookback)
         train_losses.append(train_loss)
-        validation_losses.append(val_loss)  # Store validation loss
         models.append(model)
         training_times.append(training_time)
+        print(f"Finished training model {i+1}. Train loss: {train_loss}, Training time: {sum(training_time)} seconds.")
 
-        print(f"Finished training model {i + 1}. Train loss: {train_loss}, Validation loss: {val_loss}, Training time: {sum(training_time)} seconds.")
+    print("Cross-validation process completed.")
+    return train_losses, models, training_times
 
-    print("Time series cross-validation process completed.")
-    return train_losses, validation_losses, models, training_times
+def save_model(model):
+    # Ask user where to save the LSTM model
+    while True:
+        # Ask user to enter a path and filename.
+        file_path = input("Please enter the path to save the model (with .h5 extension): ")
 
+        if not file_path:
+            raise ValueError("No location selected.")
+
+        model_name = os.path.basename(file_path)
+        model_name_no_ext = os.path.splitext(model_name)[0]
+
+        if not re.match("^[a-z0-9_]+$", model_name_no_ext):
+            print("Invalid model name. Use only lower case letters, digits, and underscores.")
+            continue  # if filename is invalid, ask again
+
+        # save the model to the entered path
+        model.save(file_path)
+        print(f"Model saved at location : {file_path}")
+        break  # if filename is valid, break the loop
+
+def ask_user_to_save_model():
+    # Ask the user whether they want to save the model
+    while True:
+        user_input = input("Do you want to save the model? (yes/no): ")
+        if user_input.lower() == "yes":
+            return True
+        elif user_input.lower() == "no":
+            return False
+        else:
+            print("Invalid input. Please enter 'yes' or 'no'.")
 
 def main():
     print("Starting the script...")
     select_gpu_with_most_memory()
-
+    # Run the script
     lookback = 14  # use past 14 days data to predict next 7 days
     filename = select_csv_file()
     print("Loading and preprocessing data...")
     scaler, X, Y = load_and_preprocess_data(filename, lookback)
-
-    start_from_checkpoint = get_user_input("Do you want to start from a checkpoint? (yes/no): ", {"yes", "no"})
-    checkpoint_dir = get_existing_directory("Please enter the path of the checkpoint directory: ") if start_from_checkpoint == "yes" else None
-
-    if start_from_checkpoint == "yes":
-        checkpoint_file = get_latest_checkpoint_file(checkpoint_dir)
-        print(f"Loading model from {checkpoint_file}...")
-        model = tf.keras.models.load_model(checkpoint_file)
-    else:
-        print("User chose not to use checkpoints. Training a new model...")
-        train_losses, validation_losses, models, training_times = time_series_cross_validation_process(X, Y, lookback, checkpoint_dir)
-        best_model_index = np.argmin(train_losses)
-        model = models[best_model_index]
-        print(f"Best model selected with a training loss of {train_losses[best_model_index]}.")
-
-    if get_user_input("Do you want to save the best model? (yes/no): ", {"yes", "no"}) == "yes":
-        model_filename = input("Please enter the filename to save the model: ")
-        model.save(model_filename)
-        print(f"Model saved as {model_filename}.")
-
+    train_losses, models, training_times = cross_validation_process(X, Y, lookback)
+    best_model_index = np.argmin(train_losses)
+    best_model = models[best_model_index]
+    print(f"Best model selected with a training loss of {train_losses[best_model_index]}.")
+    if ask_user_to_save_model():
+        save_model(best_model)
+    print("Finished the script.")
 
 if __name__ == "__main__":
     main()
