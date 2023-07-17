@@ -154,9 +154,11 @@ def ask_user_to_start_from_checkpoint():
     while True:
         user_input = input("Do you want to start from a checkpoint? (yes/no): ")
         if user_input.lower() == "yes":
-            return True
+            checkpoint_dir = ask_user_for_checkpoint_dir()
+            return True, checkpoint_dir
         elif user_input.lower() == "no":
-            return False
+            checkpoint_dir = ask_user_for_checkpoint_dir()
+            return False, checkpoint_dir
         else:
             print("Invalid input. Please enter 'yes' or 'no'.")
 
@@ -164,10 +166,10 @@ def ask_user_for_checkpoint_dir():
     # Ask the user to enter the path of the checkpoint directory
     while True:
         checkpoint_dir = input("Please enter the path of the checkpoint directory: ")
-        if os.path.isdir(checkpoint_dir):
-            return checkpoint_dir
-        else:
+        if not os.path.isdir(checkpoint_dir):
             print("Invalid directory path. Please enter a valid path.")
+        else:
+            return checkpoint_dir
 
 
 def get_latest_checkpoint_file(checkpoint_dir):
@@ -176,7 +178,7 @@ def get_latest_checkpoint_file(checkpoint_dir):
     return latest_file
 
 
-def train_model(train_X, train_Y, lookback, checkpoint_dir):
+def train_model(train_X, train_Y, val_X, val_Y, lookback, checkpoint_dir):
     if checkpoint_dir:
         checkpoint_file = get_latest_checkpoint_file(checkpoint_dir)
         print(f"Loading model from {checkpoint_file}...")
@@ -201,7 +203,6 @@ def train_model(train_X, train_Y, lookback, checkpoint_dir):
 
     callbacks = [time_callback, early_stopping]
 
-    # Add ModelCheckpoint callback if checkpoint_dir is not None
     if checkpoint_dir:
         checkpoint_callback = ModelCheckpoint(
             filepath=os.path.join(checkpoint_dir, 'model_{epoch:02d}.hdf5'),
@@ -211,9 +212,10 @@ def train_model(train_X, train_Y, lookback, checkpoint_dir):
             verbose=1)
         callbacks.append(checkpoint_callback)
 
-    model.fit(train_X, train_Y, epochs=50, batch_size=128, validation_split=0.2, verbose=1, callbacks=callbacks)
+    model.fit(train_X, train_Y, epochs=50, batch_size=128, validation_data=(val_X, val_Y), verbose=1, callbacks=callbacks)
     train_loss = model.evaluate(train_X, train_Y, verbose=1)
     return train_loss, model, time_callback.times
+
 
 
 def time_series_cross_validation_process(X, Y, lookback, checkpoint_dir):
@@ -224,16 +226,16 @@ def time_series_cross_validation_process(X, Y, lookback, checkpoint_dir):
 
     print("Starting time series cross-validation process...")
     # Change this to the number of iterations you want for the cross-validation
-    for i in range(10, X.shape[0], 10):
+    for i in range(45, X.shape[0], 45):
         print(f"Training model {i + 1} of {X.shape[0]}...")
 
-        # Splitting data into training and validation sets
+        # Splitting data into training and validation sets using a rolling-window approach
         train_X = X[:i]
         train_Y = Y[:i]
-        val_X = X[i:i + 10]
-        val_Y = Y[i:i + 10]
+        val_X = X[i:i + 45]
+        val_Y = Y[i:i + 45]
 
-        train_loss, model, training_time = train_model(train_X, train_Y, lookback, checkpoint_dir)
+        train_loss, model, training_time = train_model(train_X, train_Y, val_X, val_Y, lookback, checkpoint_dir)
         val_loss = model.evaluate(val_X, val_Y, verbose=1)  # Calculate validation loss
 
         train_losses.append(train_loss)
@@ -299,30 +301,29 @@ def main():
     print("Loading and preprocessing data...")
     scaler, X, Y = load_and_preprocess_data(filename, lookback)
 
-    checkpoint_dir = None
-    if ask_user_to_start_from_checkpoint():
-        checkpoint_dir = ask_user_for_checkpoint_dir()
+    start_from_checkpoint, checkpoint_dir = ask_user_to_start_from_checkpoint()
 
-    if ask_user_to_train_new_model():
+    if start_from_checkpoint:
+        # Continue from a checkpoint
+        checkpoint_file = get_latest_checkpoint_file(checkpoint_dir)
+        print(f"Loading model from {checkpoint_file}...")
+        model = tf.keras.models.load_model(checkpoint_file)
+    else:
         # Training a new model
+        print("User chose not to use checkpoints. Training a new model...")
         train_losses, validation_losses, models, training_times = time_series_cross_validation_process(X, Y, lookback, checkpoint_dir)
         best_model_index = np.argmin(train_losses)
         best_model = models[best_model_index]
         print(f"Best model selected with a training loss of {train_losses[best_model_index]}.")
-    else:
-        # Using a pre-trained model
-        # Load the model with the smallest validation loss
-        losses = []
-        for i in range(X.shape[0]):
-            with open(os.path.join(checkpoint_dir, f'loss_{i:03d}.json'), 'r') as f:
-                losses.append(json.load(f)['loss'])
-        min_loss_index = np.argmin(losses)
-        CHECKPOINT_FILE = os.path.join(checkpoint_dir, f'model_{min_loss_index:03d}.hdf5')
-        best_model = tf.keras.models.load_model(CHECKPOINT_FILE)
-        print(f"Pre-trained model loaded with a training loss of {losses[min_loss_index]}.")
 
-    if ask_user_to_save_model():
-        save_model(best_model)
-    print("Finished the script.")
+    print("Do you want to save the best model?")
+    user_input = input("(yes/no): ")
+    if user_input.lower() == "yes":
+        model_filename = input("Please enter the filename to save the model: ")
+        best_model.save(model_filename)
+        print(f"Model saved as {model_filename}.")
+    else:
+        print("User chose not to save the model.")
+
 if __name__ == "__main__":
     main()
