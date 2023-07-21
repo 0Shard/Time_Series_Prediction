@@ -56,27 +56,60 @@ def plot_stock_chart(data):
     mpf.plot(data, type='candle', volume=True, title='Stock Market Prices', ylabel='Price', ylabel_lower='Volume',
              show_nontrading=True, style='yahoo')
 
-def remove_characters_and_convert_to_integer(value):
+
+def convert_string_to_float(value):
     if pd.isnull(value):
         return None
 
     if isinstance(value, str):
-        characters_to_remove = [",", "-", ".", "/"]
-        for character in characters_to_remove:
-            value = value.replace(character, "")
+        # Remove thousands separator
+        value = value.replace(".", "")
+
+        # Replace comma with a period as decimal separator
+        value = value.replace(",", ".")
 
         try:
-            integer_value = int(value)
+            # Convert to float and round to 3 decimal places
+            float_value = round(float(value), 3)
         except ValueError:
-            raise ValueError("Invalid string value. Cannot convert to integer.")
+            raise ValueError("Invalid string value. Cannot convert to float.")
 
     elif isinstance(value, float):
-        integer_value = int(value)
+        # Round to 3 decimal places
+        float_value = round(value, 3)
 
     else:
         raise ValueError("Invalid value type. Must be a string or float.")
 
-    return integer_value
+    return float_value
+
+
+def convert_string_with_multiple_commas_to_float(value):
+    if pd.isnull(value):
+        return None
+
+    if isinstance(value, str):
+        # Split the string by comma
+        parts = value.split(",")
+
+        # Join all but the last part with no separator, and add a period before the last part
+        value = "".join(parts[:-1]) + "." + parts[-1]
+
+        try:
+            # Convert to float and round to 3 decimal places
+            float_value = round(float(value), 3)
+        except ValueError:
+            raise ValueError("Invalid string value. Cannot convert to float.")
+
+    elif isinstance(value, float):
+        # Round to 3 decimal places
+        float_value = round(value, 3)
+
+    else:
+        raise ValueError("Invalid value type. Must be a string or float.")
+
+    return float_value
+
 
 def select_csv_file():
     # Ask user to enter a CSV file path
