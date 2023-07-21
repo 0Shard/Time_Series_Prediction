@@ -130,7 +130,7 @@ def select_csv_file():
 
 def load_and_preprocess_data(filename, lookback):
     # Read CSV skipping the first row (header and title)
-    data = pd.read_csv(filename, skiprows=2)
+    data = pd.read_csv(filename, skiprows=1)
     # Use process_dataframe function here
     data = process_dataframe(data)
     data = data.iloc[:, [0, 1, 3, 4, 5, 6, 7]]  # Reordered columns
@@ -163,11 +163,6 @@ def load_and_preprocess_data(filename, lookback):
                                   data['Turnover'].values[i:(i + lookback)],
                                   data['Historical Close'].values[i:(i + lookback)])))
         Y.append(data['Close'].values[(i + lookback):(i + lookback + 7)])
-
-    # Print the first row of the processed DataFrame
-    print("First row of the processed DataFrame:")
-    print(data.iloc[0])
-
 
     return scaler, np.array(X), np.array(Y)
 
