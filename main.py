@@ -169,7 +169,7 @@ def load_and_preprocess_data(filename, lookback):
 
 def build_model(lookback, l2_factor=0.0085):
     model = Sequential()
-    model.add(LSTM(64, return_sequences=True, kernel_regularizer=l2(l2_factor), input_shape=(lookback, 8)))  # Updated input shape
+    model.add(LSTM(64, return_sequences=True, kernel_regularizer=l2(l2_factor), input_shape=(lookback, 9)))  # Updated input shape
     model.add(BatchNormalization())
     model.add(Dropout(0.2))
     model.add(LSTM(64, return_sequences=True, kernel_regularizer=l2(l2_factor)))
