@@ -91,11 +91,13 @@ def process_dataframe(data):
     # Identify rows with NaN values
     nan_rows = data_processed.isnull().any(axis=1)
 
+    # Collect indices of rows with NaN values
+    nan_indices = [i for i, is_nan in enumerate(nan_rows) if is_nan]
+
     # Print row indices and drop rows
-    for i, is_nan in enumerate(nan_rows):
-        if is_nan:
-            print(f"Row {i} contains NaN. Deleting the row.")
-            data_processed.drop(i, inplace=True)
+    for i in nan_indices:
+        print(f"Row {i} contains NaN. Deleting the row.")
+    data_processed.drop(nan_indices, inplace=True)
 
     # Reset dataframe index after dropping rows
     data_processed.reset_index(drop=True, inplace=True)
