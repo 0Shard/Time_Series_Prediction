@@ -110,6 +110,26 @@ def convert_string_with_multiple_commas_to_float(value):
 
     return float_value
 
+def convert_to_float_turnover(val):
+    """
+    This function replaces commas with periods, removes all periods except the last one,
+    and converts the result into a float.
+    """
+    val = val.replace(',', '.')  # Replace comma with period
+    val_split = val.split('.')  # Split string by period
+    val = "".join(val_split[:-1]) + '.' + val_split[-1]  # Join all but the last element and append the last one with a period
+    return float(val)
+
+
+def convert_to_float_volume(val):
+    """
+    This function checks if the value is a string, removes all periods if it is,
+    and then converts the result into a float.
+    """
+    if isinstance(val, str):
+        val = val.replace('.', '')  # Remove all periods
+    return float(val)
+
 
 def select_csv_file():
     # Ask user to enter a CSV file path
