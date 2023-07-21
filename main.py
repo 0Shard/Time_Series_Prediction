@@ -57,78 +57,7 @@ def plot_stock_chart(data):
              show_nontrading=True, style='yahoo')
 
 
-def convert_string_to_float(value):
-    if pd.isnull(value):
-        return None
 
-    if isinstance(value, str):
-        # Remove thousands separator
-        value = value.replace(".", "")
-
-        # Replace comma with a period as decimal separator
-        value = value.replace(",", ".")
-
-        try:
-            # Convert to float and round to 3 decimal places
-            float_value = round(float(value), 3)
-        except ValueError:
-            raise ValueError("Invalid string value. Cannot convert to float.")
-
-    elif isinstance(value, float):
-        # Round to 3 decimal places
-        float_value = round(value, 3)
-
-    else:
-        raise ValueError("Invalid value type. Must be a string or float.")
-
-    return float_value
-
-
-def convert_string_with_multiple_commas_to_float(value):
-    if pd.isnull(value):
-        return None
-
-    if isinstance(value, str):
-        # Split the string by comma
-        parts = value.split(",")
-
-        # Join all but the last part with no separator, and add a period before the last part
-        value = "".join(parts[:-1]) + "." + parts[-1]
-
-        try:
-            # Convert to float and round to 3 decimal places
-            float_value = round(float(value), 3)
-        except ValueError:
-            raise ValueError("Invalid string value. Cannot convert to float.")
-
-    elif isinstance(value, float):
-        # Round to 3 decimal places
-        float_value = round(value, 3)
-
-    else:
-        raise ValueError("Invalid value type. Must be a string or float.")
-
-    return float_value
-
-def convert_to_float_turnover(val):
-    """
-    This function replaces commas with periods, removes all periods except the last one,
-    and converts the result into a float.
-    """
-    val = val.replace(',', '.')  # Replace comma with period
-    val_split = val.split('.')  # Split string by period
-    val = "".join(val_split[:-1]) + '.' + val_split[-1]  # Join all but the last element and append the last one with a period
-    return float(val)
-
-
-def convert_to_float_volume(val):
-    """
-    This function checks if the value is a string, removes all periods if it is,
-    and then converts the result into a float.
-    """
-    if isinstance(val, str):
-        val = val.replace('.', '')  # Remove all periods
-    return float(val)
 
 
 def select_csv_file():
