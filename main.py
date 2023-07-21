@@ -239,7 +239,8 @@ def rolling_window_validation_process(X, Y, lookback, window_size, checkpoint_di
             filepath=os.path.join(checkpoint_dir, f"{validation_run_number}.h5"),
             monitor='val_loss',
             save_best_only=True,
-            verbose=1)
+            verbose=1,
+            save_weights_only=False)
 
         train_loss, model, training_time = train_model(train_X, train_Y, lookback, checkpoint_dir,)
         model.fit(train_X, train_Y, epochs=50, batch_size=128, validation_data=(test_X, test_Y), verbose=1,
