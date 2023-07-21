@@ -128,7 +128,9 @@ def load_and_preprocess_data(filename, lookback):
     data['Day'] = data['Date'].dt.day
     data['Month'] = data['Date'].dt.month
     data['Year'] = data['Date'].dt.year
-    data[['Open', 'High', 'Low', 'Close', 'Volume', 'Turnover']] = data[['Open', 'High', 'Low', 'Close', 'Volume', 'Turnover']].applymap(remove_characters_and_convert_to_integer)
+    # Apply appropriate conversion function to each column
+    data[['Open', 'High', 'Low', 'Volume', 'Turnover']] = data[['Open', 'High', 'Low', 'Volume', 'Turnover']].applymap(convert_string_to_float)
+    data['Close'] = data['Close'].apply(convert_string_with_multiple_commas_to_float)
     data['Historical Close'] = data['Close'].shift(1)
     data.dropna(inplace=True)
     data['Historical Close'] = data['Historical Close'].shift(lookback)
