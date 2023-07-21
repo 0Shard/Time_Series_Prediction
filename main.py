@@ -57,7 +57,63 @@ def plot_stock_chart(data):
              show_nontrading=True, style='yahoo')
 
 
+def convert_string_to_float(s):
+    # Check if string contains non-numeric characters (excluding comma and period)
+    for char in s:
+        if not (char.isdigit() or char in ',.'):
+            raise ValueError("String contains non-numeric characters.")
 
+    # Count periods and commas in the string
+    period_count = s.count('.')
+    comma_count = s.count(',')
+
+    # For 'Όγκος' column
+    if period_count > 1 and comma_count == 0:
+        # Remove periods (thousands separators) and convert to float
+        s = s.replace('.', '')
+        return float(s)
+    # For 'Τζίρος' column
+    elif period_count > 1 and comma_count == 1:
+        # Remove periods (thousands separators), replace comma with period (decimal point) and convert to float
+        s = s.replace('.', '').replace(',', '.')
+        return float(s)
+    # For the rest of the columns
+    else:
+        # Replace comma with period (decimal point) and convert to float
+        s = s.replace(',', '.')
+        return float(s)
+
+
+def process_dataframe(data):
+    # Make a copy of the original dataframe to avoid modifying it directly
+    data_processed = data.copy()
+
+    # Identify rows with NaN values
+    nan_rows = data_processed.isnull().any(axis=1)
+
+    # Print row indices and drop rows
+    for i, is_nan in enumerate(nan_rows):
+        if is_nan:
+            print(f"Row {i} contains NaN. Deleting the row.")
+            data_processed.drop(i, inplace=True)
+
+    # Reset dataframe index after dropping rows
+    data_processed.reset_index(drop=True, inplace=True)
+
+    # Loop over rows
+    for i, row in data_processed.iterrows():
+        # Loop over columns
+        for j, cell in enumerate(row):
+            # Skip the first (index 0) and third (index 2) columns
+            if j not in [0, 2]:
+                try:
+                    # Try to convert the cell to a float
+                    data_processed.iat[i, j] = convert_string_to_float(str(cell))
+                except ValueError as e:
+                    # If a ValueError is raised, add information about the row and column
+                    raise ValueError(f"Error in row {i}, column {j}: {e}")
+
+    return data_processed
 
 
 def select_csv_file():
