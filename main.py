@@ -191,7 +191,7 @@ def build_model(lookback, l2_factor=0.0085):
 
 
 
-def train_model(train_X, train_Y, lookback, checkpoint_dir, validation_run_number, checkpoint_file=None):
+def train_model(train_X, train_Y, lookback, checkpoint_file=None):
     if checkpoint_file is not None:
         print(f"Loading model from {checkpoint_file}...")
         model = tf.keras.models.load_model(checkpoint_file)
@@ -212,13 +212,7 @@ def train_model(train_X, train_Y, lookback, checkpoint_dir, validation_run_numbe
 
     time_callback = TimeHistory()
 
-    # Add a ModelCheckpoint callback
-    model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
-        filepath=os.path.join(checkpoint_dir, f"{validation_run_number}.h5"),
-        save_best_only=False,
-        verbose=1)
-
-    model.fit(train_X, train_Y, epochs=50, batch_size=128, validation_split=0.2, verbose=1, callbacks=[time_callback, early_stopping, model_checkpoint])
+    model.fit(train_X, train_Y, epochs=50, batch_size=128, validation_split=0.2, verbose=1, callbacks=[time_callback, early_stopping])
     train_loss = model.evaluate(train_X, train_Y, verbose=1)
     return train_loss, model, time_callback.times
 
@@ -239,8 +233,18 @@ def rolling_window_validation_process(X, Y, lookback, window_size, checkpoint_di
 
         # Calculate the validation run number
         validation_run_number = (i - lookback) // window_size + 1
-        train_loss, model, training_time = train_model(train_X, train_Y, lookback, checkpoint_dir,
-                                                       validation_run_number, checkpoint_file)
+
+        # Add a ModelCheckpoint callback
+        model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
+            filepath=os.path.join(checkpoint_dir, f"{validation_run_number}.h5"),
+            monitor='val_loss',
+            save_best_only=True,
+            verbose=1)
+
+        train_loss, model, training_time = train_model(train_X, train_Y, lookback, checkpoint_dir,)
+        model.fit(train_X, train_Y, epochs=50, batch_size=128, validation_data=(test_X, test_Y), verbose=1,
+                  callbacks=[model_checkpoint])
+
         train_losses.append(train_loss)
         models.append(model)
         training_times.append(training_time)
