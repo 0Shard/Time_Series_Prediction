@@ -149,7 +149,9 @@ def load_and_preprocess_data(filename, lookback):
     data['Month'] = data['Date'].dt.month
     data['Year'] = data['Date'].dt.year
     # Apply appropriate conversion function to each column
-    data[['Open', 'High', 'Low', 'Volume', 'Turnover']] = data[['Open', 'High', 'Low', 'Volume', 'Turnover']].applymap(convert_string_to_float)
+    data[['Open', 'High', 'Low']] = data[['Open', 'High', 'Low']].applymap(convert_string_to_float)
+    data['Volume'] = data['Volume'].apply(convert_to_float_volume)
+    data['Turnover'] = data['Turnover'].apply(convert_to_float_turnover)
     data['Close'] = data['Close'].apply(convert_string_with_multiple_commas_to_float)
     data['Historical Close'] = data['Close'].shift(1)
     data.dropna(inplace=True)
@@ -172,6 +174,7 @@ def load_and_preprocess_data(filename, lookback):
                                   data['Turnover'].values[i:(i + lookback)],
                                   data['Historical Close'].values[i:(i + lookback)])))
         Y.append(data['Close'].values[(i + lookback):(i + lookback + 7)])
+
 
     return scaler, np.array(X), np.array(Y)
 
