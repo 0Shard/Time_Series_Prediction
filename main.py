@@ -163,7 +163,7 @@ def load_and_preprocess_data(filename, lookback):
                                   data['Turnover'].values[i:(i + lookback)],
                                   data['Historical Close'].values[i:(i + lookback)])))
         Y.append(data['Close'].values[(i + lookback):(i + lookback + 7)])
-    print(np.array(X), np.array(Y))
+
     return scaler, np.array(X), np.array(Y)
 
 
