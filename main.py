@@ -138,9 +138,9 @@ def load_and_preprocess_data(filename, lookback):
     data['Date'] = pd.to_datetime(data['Date'], format='%d/%m/%Y')
     data.sort_values(by='Date', ascending=True, inplace=True)
     data.reset_index(drop=True, inplace=True)
-    data['Day'] = data['Date'].dt.day
-    data['Month'] = data['Date'].dt.month
-    data['Year'] = data['Date'].dt.year
+    data['Day'] = data['Date'].dt.day.astype(float)
+    data['Month'] = data['Date'].dt.month.astype(float)
+    data['Year'] = data['Date'].dt.year.astype(float)
 
     data['Historical Close'] = data['Close'].shift(1)
     data.dropna(inplace=True)
