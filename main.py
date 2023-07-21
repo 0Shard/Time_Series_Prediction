@@ -149,7 +149,7 @@ def load_and_preprocess_data(filename, lookback):
     data.dropna(inplace=True)
 
     scaler = MinMaxScaler(feature_range=(0, 1))
-    data[['Open', 'High', 'Low', 'Close', 'Volume', 'Turnover']] = scaler.fit_transform(data[['Open', 'High', 'Low', 'Close', 'Volume', 'Turnover']])
+    data[['Open', 'High', 'Low', 'Close', 'Volume', 'Turnover', 'Historical Close']] = scaler.fit_transform(data[['Open', 'High', 'Low', 'Close', 'Volume', 'Turnover', 'Historical Close']])
 
     X, Y = [], []
     for i in range(len(data) - lookback - 7):
@@ -163,7 +163,7 @@ def load_and_preprocess_data(filename, lookback):
                                   data['Turnover'].values[i:(i + lookback)],
                                   data['Historical Close'].values[i:(i + lookback)])))
         Y.append(data['Close'].values[(i + lookback):(i + lookback + 7)])
-
+    print(np.array(X), np.array(Y))
     return scaler, np.array(X), np.array(Y)
 
 
