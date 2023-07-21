@@ -135,7 +135,7 @@ def load_and_preprocess_data(filename, lookback):
     data = process_dataframe(data)
     data = data.iloc[:, [0, 1, 3, 4, 5, 6, 7]]  # Reordered columns
     data.columns = ['Date', 'Close', 'Open', 'High', 'Low', 'Volume', 'Turnover']
-    data['Date'] = pd.to_datetime(data['Date'], format='%d-%m-%Y')
+    data['Date'] = pd.to_datetime(data['Date'], format='%d/%m/%Y')
     data.sort_values(by='Date', ascending=True, inplace=True)
     data.reset_index(drop=True, inplace=True)
     data['Day'] = data['Date'].dt.day
