@@ -242,7 +242,12 @@ def rolling_window_validation_process(X, Y, lookback, window_size, checkpoint_di
             verbose=1,
             save_weights_only=False)
 
-        train_loss, model, training_time = train_model(train_X, train_Y, lookback, checkpoint_dir,)
+        # Use checkpoint_file to decide whether to load a model from checkpoint or start from scratch
+        if checkpoint_file and os.path.isfile(checkpoint_file):
+            train_loss, model, training_time = train_model(train_X, train_Y, lookback, checkpoint_file)
+        else:
+            train_loss, model, training_time = train_model(train_X, train_Y, lookback, None)
+
         model.fit(train_X, train_Y, epochs=50, batch_size=128, validation_data=(test_X, test_Y), verbose=1,
                   callbacks=[model_checkpoint])
 
