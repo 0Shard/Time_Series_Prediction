@@ -87,15 +87,15 @@ def select_csv_file():
 
 def load_and_preprocess_data(filename, lookback):
     data = pd.read_csv(filename)
-    data = data.iloc[:, [0, 1, 3, 4, 5, 6]]  # Select columns 0, 1, 2, 3, 4 and 6
-    data.columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+    data = data.iloc[:, [0, 1, 3, 4, 5, 6, 7]]  # Reordered columns
+    data.columns = ['Date', 'Close', 'Open', 'High', 'Low', 'Volume', 'Turnover']
     data['Date'] = pd.to_datetime(data['Date'], format='%d-%m-%y')
     data.sort_values(by='Date', ascending=True, inplace=True)
     data.reset_index(drop=True, inplace=True)
     data['Day'] = data['Date'].dt.day
     data['Month'] = data['Date'].dt.month
     data['Year'] = data['Date'].dt.year
-    data[['Open', 'High', 'Low', 'Close', 'Volume']] = data[['Open', 'High', 'Low', 'Close', 'Volume']].applymap(remove_characters_and_convert_to_integer)
+    data[['Open', 'High', 'Low', 'Close', 'Volume', 'Turnover']] = data[['Open', 'High', 'Low', 'Close', 'Volume', 'Turnover']].applymap(remove_characters_and_convert_to_integer)
     data['Historical Close'] = data['Close'].shift(1)
     data.dropna(inplace=True)
     data['Historical Close'] = data['Historical Close'].shift(lookback)
@@ -103,7 +103,7 @@ def load_and_preprocess_data(filename, lookback):
     data.dropna(inplace=True)
 
     scaler = MinMaxScaler(feature_range=(0, 1))
-    data[['Open', 'High', 'Low', 'Close', 'Volume']] = scaler.fit_transform(data[['Open', 'High', 'Low', 'Close', 'Volume']])
+    data[['Open', 'High', 'Low', 'Close', 'Volume', 'Turnover']] = scaler.fit_transform(data[['Open', 'High', 'Low', 'Close', 'Volume', 'Turnover']])
 
     X, Y = [], []
     for i in range(len(data) - lookback - 7):
@@ -114,6 +114,7 @@ def load_and_preprocess_data(filename, lookback):
                                   data['High'].values[i:(i + lookback)],
                                   data['Low'].values[i:(i + lookback)],
                                   data['Volume'].values[i:(i + lookback)],
+                                  data['Turnover'].values[i:(i + lookback)],
                                   data['Historical Close'].values[i:(i + lookback)])))
         Y.append(data['Close'].values[(i + lookback):(i + lookback + 7)])
 
