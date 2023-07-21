@@ -57,11 +57,11 @@ def plot_stock_chart(data):
              show_nontrading=True, style='yahoo')
 
 
-def convert_string_to_float(s):
+def convert_string_to_float(s, i=None, j=None):
     # Check if string contains non-numeric characters (excluding comma and period)
     for char in s:
         if not (char.isdigit() or char in ',.'):
-            raise ValueError("String contains non-numeric characters.")
+            raise ValueError(f"String contains non-numeric characters at row {i}, column {j}")
 
     # Count periods and commas in the string
     period_count = s.count('.')
@@ -108,7 +108,10 @@ def process_dataframe(data):
             if j not in [0, 2]:
                 try:
                     # Try to convert the cell to a float
-                    data_processed.iat[i, j] = convert_string_to_float(str(cell))
+                    if pd.isna(cell):
+                        print(f"NaN found at row {i}, column {j}")
+                    else:
+                        data_processed.iat[i, j] = convert_string_to_float(str(cell), i, j)
                 except ValueError as e:
                     # If a ValueError is raised, add information about the row and column
                     raise ValueError(f"Error in row {i}, column {j}: {e}")
@@ -125,19 +128,17 @@ def select_csv_file():
 
 def load_and_preprocess_data(filename, lookback):
     data = pd.read_csv(filename)
+    # Use process_dataframe function here
+    data = process_dataframe(data)
     data = data.iloc[:, [0, 1, 3, 4, 5, 6, 7]]  # Reordered columns
     data.columns = ['Date', 'Close', 'Open', 'High', 'Low', 'Volume', 'Turnover']
-    data['Date'] = pd.to_datetime(data['Date'], format='%d-%m-%y')
+    data['Date'] = pd.to_datetime(data['Date'], format='%d-%m-%Y')
     data.sort_values(by='Date', ascending=True, inplace=True)
     data.reset_index(drop=True, inplace=True)
     data['Day'] = data['Date'].dt.day
     data['Month'] = data['Date'].dt.month
     data['Year'] = data['Date'].dt.year
-    # Apply appropriate conversion function to each column
-    data[['Open', 'High', 'Low']] = data[['Open', 'High', 'Low']].applymap(convert_string_to_float)
-    data['Volume'] = data['Volume'].apply(convert_to_float_volume)
-    data['Turnover'] = data['Turnover'].apply(convert_to_float_turnover)
-    data['Close'] = data['Close'].apply(convert_string_with_multiple_commas_to_float)
+
     data['Historical Close'] = data['Close'].shift(1)
     data.dropna(inplace=True)
     data['Historical Close'] = data['Historical Close'].shift(lookback)
