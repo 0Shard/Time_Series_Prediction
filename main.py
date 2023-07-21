@@ -301,7 +301,7 @@ def main():
     if use_checkpoint:
         checkpoint_file = input("Please enter the path to the checkpoint file: ")
 
-    train_losses, models, training_times, test_X, test_Y = rolling_window_validation_process(X, Y, lookback, 7,
+    train_losses, models, training_times, test_X, test_Y = rolling_window_validation_process(X, Y, lookback, 14,
                                                                                              checkpoint_dir,
                                                                                              checkpoint_file)
     best_model_index = np.argmin(train_losses)
