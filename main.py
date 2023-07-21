@@ -87,7 +87,7 @@ def select_csv_file():
 
 def load_and_preprocess_data(filename, lookback):
     data = pd.read_csv(filename)
-    data = data.iloc[:, [0, 1, 2, 3, 4, 6]]  # Select columns 0, 1, 2, 3, 4 and 6
+    data = data.iloc[:, [0, 1, 3, 4, 5, 6]]  # Select columns 0, 1, 2, 3, 4 and 6
     data.columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
     data['Date'] = pd.to_datetime(data['Date'], format='%d-%m-%y')
     data.sort_values(by='Date', ascending=True, inplace=True)
