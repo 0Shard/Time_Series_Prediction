@@ -247,7 +247,7 @@ def rolling_window_validation_process(X, Y, lookback, window_size, checkpoint_di
         # Continue training the same model within the loop
         train_loss, model, training_time = train_model(train_X, train_Y, model)
 
-        model.fit(train_X, train_Y, epochs=50, batch_size=128, validation_data=(test_X, test_Y), verbose=1,
+        model.fit(train_X, train_Y, epochs=50, batch_size=1024, validation_data=(test_X, test_Y), verbose=1,
                   callbacks=[model_checkpoint])
 
         train_losses.append(train_loss)
