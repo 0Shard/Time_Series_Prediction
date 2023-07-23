@@ -206,7 +206,7 @@ def train_model(train_X, train_Y, model):
 
     time_callback = TimeHistory()
 
-    model.fit(train_X, train_Y, epochs=50, batch_size=128, validation_split=0.2, verbose=1, callbacks=[time_callback, early_stopping])
+    model.fit(train_X, train_Y, epochs=50, batch_size=1024, validation_split=0.2, verbose=1, callbacks=[time_callback, early_stopping])
     train_loss = model.evaluate(train_X, train_Y, verbose=1)
     return train_loss, model, time_callback.times
 
