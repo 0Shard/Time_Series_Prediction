@@ -217,14 +217,14 @@ def train_model(train_X, train_Y, lookback, checkpoint_file=None):
     return train_loss, model, time_callback.times
 
 
-def rolling_window_validation_process(X, Y, lookback, window_size, checkpoint_dir, checkpoint_file=None):
+def rolling_window_validation_process(X, Y, lookback, window_size, checkpoint_dir, starting_i=0, checkpoint_file=None):
     train_losses = []
     models = []
     training_times = []
     test_X, test_Y = None, None
 
     print("Starting rolling window validation process...")
-    for i in range(lookback, X.shape[0] - window_size):
+    for i in range(starting_i if checkpoint_file else lookback, X.shape[0] - window_size):
         print(f"Training model {i + 1} of {X.shape[0] - window_size}...")
         train_X = X[:i]
         train_Y = Y[:i]
@@ -236,7 +236,7 @@ def rolling_window_validation_process(X, Y, lookback, window_size, checkpoint_di
 
         # Add a ModelCheckpoint callback
         model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
-            filepath=os.path.join(checkpoint_dir, f"{validation_run_number}.h5"),
+            filepath=os.path.join(checkpoint_dir, f"{i}_{validation_run_number}.h5"),
             monitor='val_loss',
             save_best_only=True,
             verbose=1,
@@ -246,7 +246,7 @@ def rolling_window_validation_process(X, Y, lookback, window_size, checkpoint_di
         if checkpoint_file and os.path.isfile(checkpoint_file):
             train_loss, model, training_time = train_model(train_X, train_Y, lookback, checkpoint_file)
         else:
-            train_loss, model, training_time = train_model(train_X, train_Y, lookback, None)
+            train_loss, model, training_time = train_model(train_X, train_Y, lookback, checkpoint_file if os.path.isfile(checkpoint_file) else None)
 
         model.fit(train_X, train_Y, epochs=50, batch_size=128, validation_data=(test_X, test_Y), verbose=1,
                   callbacks=[model_checkpoint])
@@ -308,11 +308,14 @@ def main():
     # Ask the user if they want to start from a checkpoint
     use_checkpoint = input("Do you want to start from a checkpoint? (yes/no): ").lower() == "yes"
     checkpoint_file = None
+    starting_i = 0
     if use_checkpoint:
         checkpoint_file = input("Please enter the path to the checkpoint file: ")
+        starting_i = int(os.path.basename(checkpoint_file).split("_")[0])
 
     train_losses, models, training_times, test_X, test_Y = rolling_window_validation_process(X, Y, lookback, 14,
                                                                                              checkpoint_dir,
+                                                                                             starting_i,
                                                                                              checkpoint_file)
     best_model_index = np.argmin(train_losses)
     best_model = models[best_model_index]
