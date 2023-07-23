@@ -105,8 +105,8 @@ def load_and_preprocess_data(filename, lookback):
                                   data['Historical Close'].values[i:(i + lookback)])))
         Y.append(data['Close'].values[(i + lookback):(i + lookback + 7)])
 
-    return scaler, np.array(X), np.array(Y)
-    return scaler, X, Y
+    return scaler, np.array(X), np.array(Y), data
+
 
 def load_model(path_to_model):
     model = tf.keras.models.load_model(path_to_model)
@@ -124,7 +124,7 @@ def plot_predictions(data, predictions):
 def main():
     filename = "History_Closes_For_AI.csv"  # Adjust this if your CSV file is located elsewhere
     lookback = 14
-    scaler, X, Y = load_and_preprocess_data(filename, lookback)
+    scaler, X, Y, data = load_and_preprocess_data(filename, lookback)
 
     path_to_model = "model.h5"  # Adjust this if your model is located elsewhere
     model = load_model(path_to_model)
