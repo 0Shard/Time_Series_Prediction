@@ -191,13 +191,7 @@ def build_model(lookback, l2_factor=0.0085):
 
 
 
-def train_model(train_X, train_Y, lookback, checkpoint_file=None):
-    if checkpoint_file is not None:
-        print(f"Loading model from {checkpoint_file}...")
-        model = tf.keras.models.load_model(checkpoint_file)
-    else:
-        model = build_model(lookback)
-
+def train_model(train_X, train_Y, model):
     lr_schedule = ExponentialDecay(
         initial_learning_rate=1e-2,
         decay_steps=10000,
@@ -224,6 +218,14 @@ def rolling_window_validation_process(X, Y, lookback, window_size, checkpoint_di
     test_X, test_Y = None, None
 
     print("Starting rolling window validation process...")
+
+    # Load model from checkpoint or build a new model outside the loop
+    if checkpoint_file and os.path.isfile(checkpoint_file):
+        print(f"Loading model from {checkpoint_file}...")
+        model = tf.keras.models.load_model(checkpoint_file)
+    else:
+        model = build_model(lookback)
+
     for i in range(starting_i if checkpoint_file else lookback, X.shape[0] - window_size):
         print(f"Training model {i + 1} of {X.shape[0] - window_size}...")
         train_X = X[:i]
@@ -242,11 +244,8 @@ def rolling_window_validation_process(X, Y, lookback, window_size, checkpoint_di
             verbose=1,
             save_weights_only=False)
 
-        # Use checkpoint_file to decide whether to load a model from checkpoint or start from scratch
-        if checkpoint_file and os.path.isfile(checkpoint_file):
-            train_loss, model, training_time = train_model(train_X, train_Y, lookback, checkpoint_file)
-        else:
-            train_loss, model, training_time = train_model(train_X, train_Y, lookback, checkpoint_file if os.path.isfile(checkpoint_file) else None)
+        # Continue training the same model within the loop
+        train_loss, model, training_time = train_model(train_X, train_Y, model)
 
         model.fit(train_X, train_Y, epochs=50, batch_size=128, validation_data=(test_X, test_Y), verbose=1,
                   callbacks=[model_checkpoint])
