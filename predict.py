@@ -89,8 +89,10 @@ def load_and_preprocess_data(filename, lookback):
     data.dropna(inplace=True)
 
     scaler = MinMaxScaler(feature_range=(0, 1))
-    data[['Open', 'High', 'Low', 'Close', 'Volume', 'Turnover', 'Historical Close']] = scaler.fit_transform(
-        data[['Open', 'High', 'Low', 'Close', 'Volume', 'Turnover', 'Historical Close']])
+    scaler_close = MinMaxScaler(feature_range=(0, 1))  # separate scaler for 'Close'
+    data[['Open', 'High', 'Low', 'Volume', 'Turnover', 'Historical Close']] = scaler.fit_transform(
+        data[['Open', 'High', 'Low', 'Volume', 'Turnover', 'Historical Close']])
+    data[['Close']] = scaler_close.fit_transform(data[['Close']])  # fit and transform 'Close' separately
 
     X, Y = [], []
     for i in range(len(data) - lookback - 7):
@@ -105,7 +107,7 @@ def load_and_preprocess_data(filename, lookback):
                                   data['Historical Close'].values[i:(i + lookback)])))
         Y.append(data['Close'].values[(i + lookback):(i + lookback + 7)])
 
-    return scaler, np.array(X), np.array(Y), data
+    return scaler, scaler_close, np.array(X), np.array(Y), data  # return scaler_close as well
 
 
 def load_model(path_to_model):
@@ -124,7 +126,7 @@ def plot_predictions(data, predictions):
 def main():
     filename = "History_Closes_For_AI.csv"  # Adjust this if your CSV file is located elsewhere
     lookback = 14
-    scaler, X, Y, data = load_and_preprocess_data(filename, lookback)
+    scaler, scaler_close, X, Y, data = load_and_preprocess_data(filename, lookback)  # get scaler_close
 
     path_to_model = "model.h5"  # Adjust this if your model is located elsewhere
     model = load_model(path_to_model)
@@ -132,7 +134,7 @@ def main():
     predictions = make_prediction(model, X, lookback)
 
     # Scale predictions back to original scale
-    predictions = scaler.inverse_transform(predictions)
+    predictions = scaler_close.inverse_transform(predictions)
 
     plot_predictions(data, predictions)
 
