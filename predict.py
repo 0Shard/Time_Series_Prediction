@@ -110,6 +110,13 @@ def load_and_preprocess_data(filename, lookback):
     return scaler, scaler_close, np.array(X), np.array(Y), data  # return scaler_close as well
 
 
+def select_csv_file():
+    # Ask user to enter a CSV file path
+    file_path = input("Please enter the path to the CSV file: ")
+    if not os.path.isfile(file_path):
+        raise ValueError("No such file found.")
+    return file_path
+
 def load_model(path_to_model):
     model = tf.keras.models.load_model(path_to_model)
     return model
@@ -124,7 +131,7 @@ def plot_predictions(data, predictions):
     mpf.plot(data.set_index('Date')[-100:], type='line', title='Stock Prices', ylabel='Price', volume=True, style='yahoo')
 
 def main():
-    filename = "History_Closes_For_AI.csv"  # Adjust this if your CSV file is located elsewhere
+    filename = select_csv_file()  # Adjust this if your CSV file is located elsewhere
     lookback = 14
     scaler, scaler_close, X, Y, data = load_and_preprocess_data(filename, lookback)  # get scaler_close
 
@@ -135,6 +142,9 @@ def main():
 
     # Scale predictions back to original scale
     predictions = scaler_close.inverse_transform(predictions)
+
+    # Print the list of predicted values
+    print(predictions)
 
     plot_predictions(data, predictions)
 
