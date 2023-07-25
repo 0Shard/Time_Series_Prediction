@@ -3,6 +3,7 @@ from sklearn.preprocessing import MinMaxScaler
 import numpy as np
 import tensorflow as tf
 import mplfinance as mpf
+import os
 
 
 def convert_string_to_float(s, i=None, j=None):
@@ -110,6 +111,13 @@ def load_and_preprocess_data(filename, lookback):
     return scaler, scaler_close, np.array(X), np.array(Y), data  # return scaler_close as well
 
 
+def select_h5_file():
+    # Ask user to enter a .h5 file path
+    file_path = input("Please enter the path to the .h5 file: ")
+    if not os.path.isfile(file_path):
+        raise ValueError("No such file found.")
+    return file_path
+
 def select_csv_file():
     # Ask user to enter a CSV file path
     file_path = input("Please enter the path to the CSV file: ")
@@ -135,7 +143,7 @@ def main():
     lookback = 14
     scaler, scaler_close, X, Y, data = load_and_preprocess_data(filename, lookback)  # get scaler_close
 
-    path_to_model = "model.h5"  # Adjust this if your model is located elsewhere
+    path_to_model = select_h5_file()  # Adjust this if your model is located elsewhere
     model = load_model(path_to_model)
 
     predictions = make_prediction(model, X, lookback)
