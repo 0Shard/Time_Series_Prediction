@@ -70,9 +70,7 @@ def process_dataframe(data):
     return data_processed
 
 def load_and_preprocess_data(filename, lookback):
-    # Read CSV skipping the first row (header and title)
     data = pd.read_csv(filename, skiprows=1)
-    # Use process_dataframe function here
     data = process_dataframe(data)
     data = data.iloc[:, [0, 1, 3, 4, 5, 6, 7]]  # Reordered columns
     data.columns = ['Date', 'Close', 'Open', 'High', 'Low', 'Volume', 'Turnover']
@@ -90,7 +88,8 @@ def load_and_preprocess_data(filename, lookback):
     data.dropna(inplace=True)
 
     scaler = MinMaxScaler(feature_range=(0, 1))
-    scaler_close = MinMaxScaler(feature_range=(0, 1))  # separate scaler for 'Close'
+    scaler_close = MinMaxScaler(feature_range=(0, 1))
+    data_unnormalized = data.copy()  # Added line to copy unnormalized data
     data[['Open', 'High', 'Low', 'Volume', 'Turnover', 'Historical Close']] = scaler.fit_transform(
         data[['Open', 'High', 'Low', 'Volume', 'Turnover', 'Historical Close']])
     data[['Close']] = scaler_close.fit_transform(data[['Close']])  # fit and transform 'Close' separately
@@ -108,7 +107,8 @@ def load_and_preprocess_data(filename, lookback):
                                   data['Historical Close'].values[i:(i + lookback)])))
         Y.append(data['Close'].values[(i + lookback):(i + lookback + 7)])
 
-    return scaler, scaler_close, np.array(X), np.array(Y), data  # return scaler_close as well
+    return scaler, scaler_close, np.array(X), np.array(Y), data_unnormalized  # Return unnormalized data
+
 
 
 def select_h5_file():
@@ -133,14 +133,16 @@ def make_prediction(model, X, lookback):
     predictions = model.predict(X[-1].reshape(1, lookback, 9))  # Note: input shape is (lookback, 9)
     return predictions
 
-def plot_predictions(data, predictions):
-    frames = []  # create an empty list to store DataFrame objects
+def plot_predictions(data_unnormalized, predictions):
+    data = data_unnormalized.copy()  # Use the unnormalized data
+    frames = []
     for i in range(7):
         df = pd.DataFrame([{'Date': data['Date'].iloc[-1] + pd.DateOffset(days=1), 'Close': predictions[0][i]}])
         frames.append(df)
     temp_df = pd.concat(frames, ignore_index=True)
     data = pd.concat([data, temp_df])
     mpf.plot(data.set_index('Date')[-100:], type='line', title='Stock Prices', ylabel='Price', volume=True, style='yahoo')
+
 
 
 
