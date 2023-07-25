@@ -134,9 +134,15 @@ def make_prediction(model, X, lookback):
     return predictions
 
 def plot_predictions(data, predictions):
+    frames = []  # create an empty list to store DataFrame objects
     for i in range(7):
-        data = data.append({'Date': data['Date'].iloc[-1] + pd.DateOffset(days=1), 'Close': predictions[0][i]}, ignore_index=True)
+        df = pd.DataFrame([{'Date': data['Date'].iloc[-1] + pd.DateOffset(days=1), 'Close': predictions[0][i]}])
+        frames.append(df)
+    temp_df = pd.concat(frames, ignore_index=True)
+    data = pd.concat([data, temp_df])
     mpf.plot(data.set_index('Date')[-100:], type='line', title='Stock Prices', ylabel='Price', volume=True, style='yahoo')
+
+
 
 def main():
     filename = select_csv_file()  # Adjust this if your CSV file is located elsewhere
