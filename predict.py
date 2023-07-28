@@ -148,7 +148,7 @@ def plot_predictions(data_unnormalized, predictions):
 
 def main():
     filename = select_csv_file()  # Adjust this if your CSV file is located elsewhere
-    lookback = 14
+    lookback = 30
     scaler, scaler_close, X, Y, data = load_and_preprocess_data(filename, lookback)  # get scaler_close
 
     path_to_model = select_h5_file()  # Adjust this if your model is located elsewhere
