@@ -170,15 +170,9 @@ def load_and_preprocess_data(filename, lookback):
     return scaler, np.array(X), np.array(Y)
 
 
-def build_model(lookback, l2_factor=0.0085):
+def build_model(lookback, l2_factor=0.009):
     model = Sequential()
     model.add(LSTM(64, return_sequences=True, kernel_regularizer=l2(l2_factor), input_shape=(lookback, 9)))  # Updated input shape
-    model.add(BatchNormalization())
-    model.add(Dropout(0.2))
-    model.add(LSTM(64, return_sequences=True, kernel_regularizer=l2(l2_factor)))
-    model.add(BatchNormalization())
-    model.add(Dropout(0.2))
-    model.add(LSTM(64, return_sequences=True, kernel_regularizer=l2(l2_factor)))
     model.add(BatchNormalization())
     model.add(Dropout(0.2))
     model.add(LSTM(64, return_sequences=True, kernel_regularizer=l2(l2_factor)))
@@ -197,19 +191,19 @@ def build_model(lookback, l2_factor=0.0085):
 def train_model(train_X, train_Y, model):
     lr_schedule = ExponentialDecay(
         initial_learning_rate=1e-2,
-        decay_steps=10000,
+        decay_steps=1000,
         decay_rate=0.9)
 
     model.compile(loss='mean_squared_error', optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule))
 
     early_stopping = EarlyStopping(
         monitor='val_loss',
-        patience=15,
+        patience=20,
         restore_best_weights=True)
 
     time_callback = TimeHistory()
 
-    model.fit(train_X, train_Y, epochs=50, batch_size=1024, validation_split=0.2, verbose=1, callbacks=[time_callback, early_stopping])
+    model.fit(train_X, train_Y, epochs=100, batch_size=512, validation_split=0.2, verbose=1, callbacks=[time_callback, early_stopping])
     train_loss = model.evaluate(train_X, train_Y, verbose=1)
     return train_loss, model, time_callback.times
 
@@ -250,7 +244,7 @@ def rolling_window_validation_process(X, Y, lookback, window_size, checkpoint_di
         # Continue training the same model within the loop
         train_loss, model, training_time = train_model(train_X, train_Y, model)
 
-        model.fit(train_X, train_Y, epochs=50, batch_size=1024, validation_data=(test_X, test_Y), verbose=1,
+        model.fit(train_X, train_Y, epochs=100, batch_size=512, validation_data=(test_X, test_Y), verbose=1,
                   callbacks=[model_checkpoint])
 
         train_losses.append(train_loss)
@@ -299,7 +293,7 @@ def main():
     print("Starting the script...")
     select_gpu_with_most_memory()
     # Run the script
-    lookback = 14  # use past 14 days data to predict next 7 days
+    lookback = 30  # use past 14 days data to predict next 7 days
     filename = select_csv_file()
     print("Loading and preprocessing data...")
     scaler, X, Y = load_and_preprocess_data(filename, lookback)
@@ -315,7 +309,7 @@ def main():
         checkpoint_file = input("Please enter the path to the checkpoint file: ")
         starting_i = int(os.path.basename(checkpoint_file).split("_")[0])
 
-    train_losses, models, training_times, test_X, test_Y = rolling_window_validation_process(X, Y, lookback, 14,
+    train_losses, models, training_times, test_X, test_Y = rolling_window_validation_process(X, Y, lookback, 30,
                                                                                              checkpoint_dir,
                                                                                              starting_i,
                                                                                              checkpoint_file)
