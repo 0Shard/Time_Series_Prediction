@@ -296,7 +296,7 @@ def rolling_window_validation_process(X, Y, lookback, window_size, checkpoint_di
     print("Rolling window validation process completed.")
     return train_losses, train_predictions_all, val_predictions_all, models, training_times, test_X, test_Y
 
-def save_model(model,true_values , train_predictions_all, val_predictions_all):
+def save_model(model,data_for_plot , train_predictions_all, val_predictions_all):
     # Ask user where to save the LSTM model
     while True:
         # Ask user to enter a path and filename.
@@ -338,7 +338,7 @@ def main():
     lookback = 30  # use past 14 days data to predict next 7 days
     filename = select_csv_file()
     print("Loading and preprocessing data...")
-    scaler, X, Y = load_and_preprocess_data(filename, lookback)
+    scaler, X, Y, data_for_plot = load_and_preprocess_data(filename, lookback)
 
     # Get the checkpoint directory from the user
     checkpoint_dir = input("Please enter the directory to save the checkpoints: ")
