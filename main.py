@@ -14,7 +14,6 @@ from tensorflow.keras.layers import BatchNormalization
 from tensorflow.keras.optimizers.schedules import ExponentialDecay
 from tensorflow.keras.regularizers import l2
 import mplfinance as mpf
-import matplotlib.pyplot as plt
 
 
 def select_gpu_with_most_memory():
@@ -51,27 +50,6 @@ class TimeHistory(Callback):
 
     def on_epoch_end(self, batch, logs={}):
         self.times.append(time.time() - self.epoch_time_start)
-
-
-def save_plots(true_values, validation_values, train_values, file_path):
-    # Create a subplot for each plot
-    fig, axes = plt.subplots(3, 1, figsize=(10, 18))
-
-    # Plot true values in blue
-    mpf.plot(true_values, type='line', axtitle='True Values', linecolor='blue', ax=axes[0])
-
-    # Plot validation values in yellow
-    mpf.plot(validation_values, type='line', axtitle='Validation Values', linecolor='yellow', ax=axes[1])
-
-    # Plot train values in red
-    mpf.plot(train_values, type='line', axtitle='Train Values', linecolor='red', ax=axes[2])
-
-    # Save the figure
-    file_path = os.path.join(file_path, 'plot.png')
-    fig.savefig(file_path)
-    plt.close(fig)
-
-    print(f'Plot saved to {file_path}')
 
 
 def convert_string_to_float(s, i=None, j=None):
@@ -273,7 +251,7 @@ def rolling_window_validation_process(X, Y, lookback, window_size, checkpoint_di
     print("Rolling window validation process completed.")
     return train_losses, models, training_times, test_X, test_Y
 
-def save_model(model, true_values, validation_values, train_values):
+def save_model(model):
     # Ask user where to save the LSTM model
     while True:
         # Ask user to enter a path and filename.
@@ -291,8 +269,6 @@ def save_model(model, true_values, validation_values, train_values):
 
         # save the model to the entered path
         model.save(file_path)
-        save_plots(true_values, validation_values, train_values, file_path)
-        print(f"Plot saved at location : {file_path}")
         print(f"Model saved at location : {file_path}")
         break  # if filename is valid, break the loop
 
