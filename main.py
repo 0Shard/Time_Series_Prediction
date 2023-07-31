@@ -148,8 +148,8 @@ def load_and_preprocess_data(filename, lookback):
     data.drop(data.head(lookback).index, inplace=True)
     data.dropna(inplace=True)
 
-    scaler = MinMaxScaler(feature_range=(0, 1))
-    scaler_close = MinMaxScaler(feature_range=(0, 1))  # separate scaler for 'Close'
+    scaler = MinMaxScaler(feature_range=(-1, 1))
+    scaler_close = MinMaxScaler(feature_range=(-1, 1))  # separate scaler for 'Close'
     data[['Open', 'High', 'Low', 'Volume', 'Turnover', 'Historical Close']] = scaler.fit_transform(
         data[['Open', 'High', 'Low', 'Volume', 'Turnover', 'Historical Close']])
     data[['Close']] = scaler_close.fit_transform(data[['Close']])  # fit and transform 'Close' separately
@@ -181,7 +181,7 @@ def build_model(lookback, l2_factor=0.009):
     model.add(LSTM(64, kernel_regularizer=l2(l2_factor)))
     model.add(BatchNormalization())
     model.add(Dropout(0.2))
-    model.add(Dense(7))
+    model.add(Dense(7, activation='tanh'))
     model.compile(loss='mean_squared_error', optimizer='adam')
 
     return model

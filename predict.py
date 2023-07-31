@@ -87,8 +87,8 @@ def load_and_preprocess_data(filename, lookback):
     data.drop(data.head(lookback).index, inplace=True)
     data.dropna(inplace=True)
 
-    scaler = MinMaxScaler(feature_range=(0, 1))
-    scaler_close = MinMaxScaler(feature_range=(0, 1))
+    scaler = MinMaxScaler(feature_range=(-1, 1))
+    scaler_close = MinMaxScaler(feature_range=(-1, 1))
     data_unnormalized = data.copy()  # Added line to copy unnormalized data
     data[['Open', 'High', 'Low', 'Volume', 'Turnover', 'Historical Close']] = scaler.fit_transform(
         data[['Open', 'High', 'Low', 'Volume', 'Turnover', 'Historical Close']])
