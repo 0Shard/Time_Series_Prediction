@@ -13,8 +13,15 @@ from tensorflow.keras.callbacks import EarlyStopping, TensorBoard, ProgbarLogger
 from tensorflow.keras.layers import BatchNormalization
 from tensorflow.keras.optimizers.schedules import ExponentialDecay
 from tensorflow.keras.regularizers import l2
-import mplfinance as mpf
+import datetime
+import matplotlib.pyplot as plt
 
+
+# Create Log Directory
+log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
+# Create TensorBoard Callback
+tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=1)
 
 def select_gpu_with_most_memory():
 
@@ -79,6 +86,33 @@ def convert_string_to_float(s, i=None, j=None):
         return float(s)
 
 
+def plot_values(true_values, train_predictions, val_predictions, filename):
+    # Flatten the true values and predictions
+    true_values_flat = [item for sublist in true_values for item in sublist]
+    train_predictions_flat = [item for sublist in train_predictions for item in sublist]
+    val_predictions_flat = [item for sublist in val_predictions for item in sublist]
+
+    # Define plot ranges
+    train_range = range(len(train_predictions_flat))
+    val_range = range(len(train_predictions_flat), len(train_predictions_flat) + len(val_predictions_flat))
+
+    # Plot true values
+    plt.plot(true_values_flat, color='blue', label='True Values')
+
+    # Plot training predictions
+    plt.plot(train_range, train_predictions_flat, color='yellow', label='Training Predictions')
+
+    # Plot validation predictions
+    plt.plot(val_range, val_predictions_flat, color='red', label='Validation Predictions')
+
+    plt.xlabel('Time')
+    plt.ylabel('Value')
+    plt.legend()
+    plt.title('True vs Predicted Values')
+
+    # Save the plot to a file
+    plt.savefig(filename)
+
 def process_dataframe(data):
     # Make a copy of the original dataframe to avoid modifying it directly
     data_processed = data.copy()
@@ -123,6 +157,7 @@ def select_csv_file():
         raise ValueError("No such file found.")
     return file_path
 
+
 def load_and_preprocess_data(filename, lookback):
     # Read CSV skipping the first row (header and title)
     data = pd.read_csv(filename, skiprows=1)
@@ -143,6 +178,9 @@ def load_and_preprocess_data(filename, lookback):
     data.drop(data.head(lookback).index, inplace=True)
     data.dropna(inplace=True)
 
+    # Create a copy of the 'Close' column before scaling
+    data_for_plot = data['Close'].copy()
+
     scaler = MinMaxScaler(feature_range=(-1, 1))
     scaler_close = MinMaxScaler(feature_range=(-1, 1))  # separate scaler for 'Close'
     data[['Open', 'High', 'Low', 'Volume', 'Turnover', 'Historical Close']] = scaler.fit_transform(
@@ -162,7 +200,7 @@ def load_and_preprocess_data(filename, lookback):
                                   data['Historical Close'].values[i:(i + lookback)])))
         Y.append(data['Close'].values[(i + lookback):(i + lookback + 7)])
 
-    return scaler, np.array(X), np.array(Y)
+    return scaler, np.array(X), np.array(Y), data_for_plot
 
 
 def build_model(lookback, l2_factor=0.009):
@@ -198,13 +236,17 @@ def train_model(train_X, train_Y, model):
 
     time_callback = TimeHistory()
 
-    model.fit(train_X, train_Y, epochs=100, batch_size=512, validation_split=0.2, verbose=1, callbacks=[time_callback, early_stopping])
+    model.fit(train_X, train_Y, epochs=100, batch_size=512, validation_split=0.2, verbose=1, callbacks=[time_callback, early_stopping, tensorboard_callback])
+
     train_loss = model.evaluate(train_X, train_Y, verbose=1)
-    return train_loss, model, time_callback.times
+    train_predictions = model.predict(train_X)  # Get predictions on training data
+    return train_loss, train_predictions, model, time_callback.times
 
 
 def rolling_window_validation_process(X, Y, lookback, window_size, checkpoint_dir, starting_i=0, checkpoint_file=None):
     train_losses = []
+    train_predictions_all = []  # Collect training predictions
+    val_predictions_all = []  # Collect validation predictions
     models = []
     training_times = []
     test_X, test_Y = None, None
@@ -237,21 +279,24 @@ def rolling_window_validation_process(X, Y, lookback, window_size, checkpoint_di
             save_weights_only=False)
 
         # Continue training the same model within the loop
-        train_loss, model, training_time = train_model(train_X, train_Y, model)
+        train_loss, train_predictions, model, training_time = train_model(train_X, train_Y, model)
+        val_predictions = model.predict(test_X)  # Get predictions on validation data
 
         model.fit(train_X, train_Y, epochs=100, batch_size=512, validation_data=(test_X, test_Y), verbose=1,
                   callbacks=[model_checkpoint])
 
         train_losses.append(train_loss)
+        train_predictions_all.append(train_predictions)
+        val_predictions_all.append(val_predictions)
         models.append(model)
         training_times.append(training_time)
         print(
             f"Finished training model {i + 1}. Train loss: {train_loss}, Training time: {sum(training_time)} seconds.")
 
     print("Rolling window validation process completed.")
-    return train_losses, models, training_times, test_X, test_Y
+    return train_losses, train_predictions_all, val_predictions_all, models, training_times, test_X, test_Y
 
-def save_model(model):
+def save_model(model,true_values , train_predictions_all, val_predictions_all):
     # Ask user where to save the LSTM model
     while True:
         # Ask user to enter a path and filename.
@@ -269,6 +314,8 @@ def save_model(model):
 
         # save the model to the entered path
         model.save(file_path)
+        plot_values(true_values=data_for_plot, train_predictions=train_predictions_all, val_predictions=val_predictions_all, filename=file_path)
+        print(f"Plot saved at location : {file_path}")
         print(f"Model saved at location : {file_path}")
         break  # if filename is valid, break the loop
 
@@ -304,7 +351,7 @@ def main():
         checkpoint_file = input("Please enter the path to the checkpoint file: ")
         starting_i = int(os.path.basename(checkpoint_file).split("_")[0])
 
-    train_losses, models, training_times, test_X, test_Y = rolling_window_validation_process(X, Y, lookback, 30,
+    train_losses, train_predictions_all, val_predictions_all, models, training_times, test_X, test_Y = rolling_window_validation_process(X, Y, lookback, 30,
                                                                                              checkpoint_dir,
                                                                                              starting_i,
                                                                                              checkpoint_file)
