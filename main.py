@@ -13,6 +13,7 @@ from tensorflow.keras.callbacks import EarlyStopping, TensorBoard, ProgbarLogger
 from tensorflow.keras.layers import BatchNormalization
 from tensorflow.keras.optimizers.schedules import ExponentialDecay
 from tensorflow.keras.regularizers import l2
+from sklearn.model_selection import train_test_split
 import datetime
 import matplotlib.pyplot as plt
 
@@ -158,7 +159,7 @@ def select_csv_file():
     return file_path
 
 
-def load_and_preprocess_data(filename, lookback):
+def load_and_preprocess_data(filename, lookback, batch_size=32, validation_split=0.3):
     # Read CSV skipping the first row (header and title)
     data = pd.read_csv(filename, skiprows=1)
     # Use process_dataframe function here
@@ -200,7 +201,23 @@ def load_and_preprocess_data(filename, lookback):
                                   data['Historical Close'].values[i:(i + lookback)])))
         Y.append(data['Close'].values[(i + lookback):(i + lookback + 7)])
 
-    return scaler, np.array(X), np.array(Y), data_for_plot
+
+    X, Y = np.array(X), np.array(Y)
+
+    # Split the data into training and validation sets
+    X_train, X_val, Y_train, Y_val = train_test_split(X, Y, test_size=validation_split, shuffle=False)
+
+    # Create tf.data.Dataset objects for training and validation
+    train_dataset = tf.data.Dataset.from_tensor_slices((X_train, Y_train))
+    val_dataset = tf.data.Dataset.from_tensor_slices((X_val, Y_val))
+
+    # Batch the training and validation datasets
+    train_dataset = train_dataset.batch(512)
+    train_dataset = train_dataset.prefetch(tf.data.experimental.AUTOTUNE)
+    val_dataset = val_dataset.batch(512)
+    val_dataset = val_dataset.prefetch(tf.data.experimental.AUTOTUNE)
+
+    return scaler, train_dataset, val_dataset, data_for_plot
 
 
 def build_model(lookback, l2_factor=0.009):
@@ -221,7 +238,7 @@ def build_model(lookback, l2_factor=0.009):
 
 
 
-def train_model(train_X, train_Y, model):
+def train_model(train_dataset, val_dataset, model):
     lr_schedule = ExponentialDecay(
         initial_learning_rate=1e-2,
         decay_steps=1000,
@@ -236,20 +253,19 @@ def train_model(train_X, train_Y, model):
 
     time_callback = TimeHistory()
 
-    model.fit(train_X, train_Y, epochs=100, batch_size=512, validation_split=0.2, verbose=1, callbacks=[time_callback, early_stopping, tensorboard_callback])
+    model.fit(train_dataset, epochs=100, validation_data=val_dataset, verbose=1, callbacks=[time_callback, early_stopping, tensorboard_callback])
 
-    train_loss = model.evaluate(train_X, train_Y, verbose=1)
-    train_predictions = model.predict(train_X)  # Get predictions on training data
+    train_loss = model.evaluate(train_dataset, verbose=1)
+    train_predictions = model.predict(train_dataset)  # Get predictions on training data
     return train_loss, train_predictions, model, time_callback.times
 
 
-def rolling_window_validation_process(X, Y, lookback, window_size, checkpoint_dir, starting_i=0, checkpoint_file=None):
+def rolling_window_validation_process(train_dataset, val_dataset, lookback, window_size, checkpoint_dir, starting_i=0, checkpoint_file=None):
     train_losses = []
     train_predictions_all = []  # Collect training predictions
     val_predictions_all = []  # Collect validation predictions
     models = []
     training_times = []
-    test_X, test_Y = None, None
 
     print("Starting rolling window validation process...")
 
@@ -260,12 +276,10 @@ def rolling_window_validation_process(X, Y, lookback, window_size, checkpoint_di
     else:
         model = build_model(lookback)
 
-    for i in range(starting_i if checkpoint_file else lookback, X.shape[0] - window_size):
-        print(f"Training model {i + 1} of {X.shape[0] - window_size}...")
-        train_X = X[:i]
-        train_Y = Y[:i]
-        test_X = X[i:i + window_size]
-        test_Y = Y[i:i + window_size]
+    for i in range(starting_i if checkpoint_file else lookback, len(train_dataset) - window_size):
+        print(f"Training model {i + 1} of {len(train_dataset) - window_size}...")
+        train_data = train_dataset.take(i)
+        test_data = train_dataset.skip(i).take(window_size)
 
         # Calculate the validation run number
         validation_run_number = (i - lookback) // window_size + 1
@@ -279,10 +293,10 @@ def rolling_window_validation_process(X, Y, lookback, window_size, checkpoint_di
             save_weights_only=False)
 
         # Continue training the same model within the loop
-        train_loss, train_predictions, model, training_time = train_model(train_X, train_Y, model)
-        val_predictions = model.predict(test_X)  # Get predictions on validation data
+        train_loss, train_predictions, model, training_time = train_model(train_data, val_dataset, model)
+        val_predictions = model.predict(test_data)  # Get predictions on validation data
 
-        model.fit(train_X, train_Y, epochs=100, batch_size=512, validation_data=(test_X, test_Y), verbose=1,
+        model.fit(train_data, epochs=100, batch_size=512, validation_data=test_data, verbose=1,
                   callbacks=[model_checkpoint])
 
         train_losses.append(train_loss)
@@ -294,7 +308,7 @@ def rolling_window_validation_process(X, Y, lookback, window_size, checkpoint_di
             f"Finished training model {i + 1}. Train loss: {train_loss}, Training time: {sum(training_time)} seconds.")
 
     print("Rolling window validation process completed.")
-    return train_losses, train_predictions_all, val_predictions_all, models, training_times, test_X, test_Y
+    return train_losses, train_predictions_all, val_predictions_all, models, training_times
 
 def save_model(model,data_for_plot , train_predictions_all, val_predictions_all):
     # Ask user where to save the LSTM model
@@ -338,7 +352,7 @@ def main():
     lookback = 30  # use past 14 days data to predict next 7 days
     filename = select_csv_file()
     print("Loading and preprocessing data...")
-    scaler, X, Y, data_for_plot = load_and_preprocess_data(filename, lookback)
+    scaler, train_dataset, val_dataset, data_for_plot = load_and_preprocess_data(filename, lookback)
 
     # Get the checkpoint directory from the user
     checkpoint_dir = input("Please enter the directory to save the checkpoints: ")
@@ -351,7 +365,7 @@ def main():
         checkpoint_file = input("Please enter the path to the checkpoint file: ")
         starting_i = int(os.path.basename(checkpoint_file).split("_")[0])
 
-    train_losses, train_predictions_all, val_predictions_all, models, training_times, test_X, test_Y = rolling_window_validation_process(X, Y, lookback, 30,
+    train_losses, train_predictions_all, val_predictions_all, models, training_times = rolling_window_validation_process(train_dataset, val_dataset, lookback, 30,
                                                                                              checkpoint_dir,
                                                                                              starting_i,
                                                                                              checkpoint_file)
@@ -359,7 +373,7 @@ def main():
     best_model = models[best_model_index]
     print(f"Best model selected with a training loss of {train_losses[best_model_index]}.")
     if ask_user_to_save_model():
-        save_model(best_model)
+        save_model(best_model,data_for_plot , train_predictions_all, val_predictions_all)
     print("Finished the script.")
 
 if __name__ == "__main__":
