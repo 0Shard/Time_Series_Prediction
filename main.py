@@ -24,30 +24,38 @@ log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 # Create TensorBoard Callback
 tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=1)
 
-def select_gpu_with_most_memory():
 
-    print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+def setup_gpu_for_training(gpu_id=0, memory_limit_gb=15):
+    """
+    Set up GPU for training with specified memory limit.
 
-    # get the memory usage information
-    output = subprocess.check_output("nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits", shell=True)
+    Args:
+    - gpu_id (int): ID of the GPU to be used.
+    - memory_limit_gb (int): Memory limit in gigabytes. Default is 15GB.
 
-    # parse the output to get the memory for each GPU
-    memories = [int(x) for x in output.decode('utf-8').strip().split('\n')]
-
-    # get the GPU with the most memory
-    gpu_most_memory = np.argmax(memories)
-
-    # now set TensorFlow to use this GPU
+    Returns:
+    - None
+    """
     gpus = tf.config.list_physical_devices('GPU')
-    if gpus:
-        try:
-            # use the GPU with the most memory
-            tf.config.set_visible_devices(gpus[gpu_most_memory], 'GPU')
-            tf.config.experimental.set_virtual_device_configuration(gpus[gpu_most_memory], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=15*1024)])
-            logical_gpus = tf.config.experimental.list_logical_devices('GPU')
-            print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
-        except RuntimeError as e:
-            print(e)
+
+    if not gpus:
+        print("No GPUs available. Using CPU.")
+        return
+
+    if gpu_id >= len(gpus):
+        raise ValueError(f"GPU:{gpu_id} not available. Maximum GPU ID is {len(gpus) - 1}.")
+
+    # Convert memory limit to megabytes
+    memory_limit_mb = memory_limit_gb * 1024
+
+    # Limit GPU memory usage
+    tf.config.set_logical_device_configuration(
+        gpus[gpu_id],
+        [tf.config.LogicalDeviceConfiguration(memory_limit=memory_limit_mb)]
+    )
+    print(f"Configured GPU:{gpu_id} with memory limit: {memory_limit_mb}MB")
+
+
 
 class TimeHistory(Callback):
     def on_train_begin(self, logs={}):
@@ -347,7 +355,7 @@ def ask_user_to_save_model():
 
 def main():
     print("Starting the script...")
-    select_gpu_with_most_memory()
+    setup_gpu_for_training(0,15)
     # Run the script
     lookback = 30  # use past 14 days data to predict next 7 days
     filename = select_csv_file()
